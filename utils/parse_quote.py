@@ -7,9 +7,9 @@ import fitz  # PyMuPDF
 from PIL import Image
 from typing import Dict
 
-def extract_quote_data(uploaded_file) -> Dict:
-    file_bytes = uploaded_file.read()
-    filename = uploaded_file.name
+# ✅ 更新后的入口函数：接受 file_stream 和 filename
+def extract_quote_data(file_stream, filename: str) -> Dict:
+    file_bytes = file_stream.read()
     text = extract_text_from_textract(file_bytes, filename)
 
     data = {
@@ -24,11 +24,11 @@ def extract_quote_data(uploaded_file) -> Dict:
     }
     return data
 
+# ✅ 自动识别文件类型（PDF 渲染为图像 → Textract）
 def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     ext = filename.lower().split(".")[-1]
     client = boto3.client("textract", region_name=os.getenv("AWS_REGION", "us-east-1"))
 
-    # PDF：每页渲染成图片上传（解决 UnsupportedDocumentException）
     if ext == "pdf":
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = ""
@@ -41,21 +41,18 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
             text += page_text + "\n"
         return text
 
-    # PNG/JPG 图像处理
     elif ext in ["png", "jpg", "jpeg"]:
         image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
-        textract_doc = {'Bytes': buffer.getvalue()}
-        response = client.detect_document_text(Document=textract_doc)
+        response = client.detect_document_text(Document={'Bytes': buffer.getvalue()})
         blocks = response.get("Blocks", [])
-        text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
-        return text
+        return "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
 
     else:
         raise ValueError("不支持的文件类型")
 
-# ✅ 智能保险公司识别
+# ✅ 智能识别保险公司名称
 def extract_company_name(text: str) -> str:
     known_companies = [
         "Progressive", "Travelers", "Safeco", "Allstate", "State Farm",
