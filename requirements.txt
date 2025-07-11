@@ -1,6 +1,5 @@
 streamlit
-boto3
 python-docx
-pdf2image
+boto3
 Pillow
 PyMuPDF
