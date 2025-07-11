@@ -29,15 +29,20 @@ def extract_quote_data(file, return_raw_text=False):
             images = pdf_to_images(file_bytes)
             if not images:
                 raise ValueError("PDF 转图片失败")
-            response = textract.detect_document_text(Document={"Bytes": images[0]})
-
+            all_text = []
+            for image_data in images:
+                image_bytes_io = io.BytesIO(image_data)
+                img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
+                for block in img_response["Blocks"]:
+                    if block["BlockType"] == "LINE":
+                        all_text.append(block["Text"])
+            full_text = "\n".join(all_text)
     elif file_suffix in ["jpg", "jpeg", "png"]:
         response = textract.detect_document_text(Document={"Bytes": file_bytes})
+        lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+        full_text = "\n".join(lines)
     else:
         raise ValueError("不支持的文件格式")
-
-    lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
-    full_text = "\n".join(lines)
 
     data = {
         "company": extract_company_name(full_text),
