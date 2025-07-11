@@ -79,10 +79,9 @@ def pdf_to_images(pdf_bytes):
     images = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     for page in doc:
-        pix = page.get_pixmap(dpi=300)
-        img_bytes = pix.tobytes("png")
+        pix = page.get_pixmap(dpi=300, alpha=False)
         img_buffer = io.BytesIO()
-        img = Image.open(io.BytesIO(img_bytes))
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         img.save(img_buffer, format="PNG")
         images.append(img_buffer.getvalue())
     return images
