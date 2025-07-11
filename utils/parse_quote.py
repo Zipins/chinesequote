@@ -40,6 +40,11 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
                 blocks = response.get("Blocks", [])
                 page_text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
                 text += page_text + "\n"
+
+        # ✅ 保存识别出的 OCR 文本供排查
+        with open("ocr_output.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+
         return text
 
     elif ext in ["png", "jpg", "jpeg"]:
@@ -48,7 +53,13 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
         image.save(buffer, format="PNG")
         response = client.detect_document_text(Document={'Bytes': buffer.getvalue()})
         blocks = response.get("Blocks", [])
-        return "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
+        text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
+
+        # ✅ 保存识别出的 OCR 文本供排查
+        with open("ocr_output.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+
+        return text
 
     else:
         raise ValueError("不支持的文件类型")
