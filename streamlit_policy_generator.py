@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+st.write("AWS_REGION:", os.getenv("AWS_REGION"))
 from utils.parse_quote import extract_text_from_file, parse_quote_from_text
 from utils.generate_policy import generate_policy_docx
 import tempfile
