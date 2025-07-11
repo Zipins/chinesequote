@@ -1,6 +1,7 @@
 # streamlit_app.py
 import streamlit as st
 import os
+import io
 from utils.parse_quote import extract_quote_data
 from utils.generate_policy import generate_policy_docx
 from tempfile import NamedTemporaryFile
@@ -19,8 +20,13 @@ custom_name = st.text_input("输出文件名称（可选）：", value="中文�
 if uploaded_file and st.button("生成保单"):
     try:
         with st.spinner("正在识别内容并生成保单，请稍候..."):
-            # 读取 PDF 内容并提取结构化数据
-            data = extract_quote_data(uploaded_file)
+            # ✅ 关键：只读取一次并保存到 file_bytes
+            file_bytes = uploaded_file.read()
+            file_stream = io.BytesIO(file_bytes)
+            filename = uploaded_file.name
+
+            # ✅ 传入 BytesIO 对象和文件名
+            data = extract_quote_data(file_stream, filename)
 
             # 加载模板文件
             template_path = "template/保单范例.docx"
