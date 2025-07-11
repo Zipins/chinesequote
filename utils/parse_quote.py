@@ -3,7 +3,7 @@ import re
 import io
 import fitz  # PyMuPDF
 from PIL import Image
-
+import traceback
 
 def extract_quote_data(file, return_raw_text=False):
     file_bytes = file.read()
@@ -22,43 +22,58 @@ def extract_quote_data(file, return_raw_text=False):
         except Exception:
             return False
 
-    if file_suffix == "pdf":
-        if is_pdf_text_based(pdf_bytes_for_fitz):
+    try:
+        print("📥 文件类型:", file_suffix)
+
+        if file_suffix == "pdf":
+            print("🔍 PDF 文件，判断是否为文本型...")
+            if is_pdf_text_based(pdf_bytes_for_fitz):
+                print("✅ 是文本型 PDF，使用 detect_document_text")
+                response = textract.detect_document_text(Document={"Bytes": file_bytes})
+                lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+                full_text = "\n".join(lines)
+            else:
+                print("📷 是扫描型 PDF，将 PDF 转为图片进行处理")
+                images = pdf_to_images(file_bytes)
+                if not images:
+                    raise ValueError("PDF 转图片失败")
+                all_text = []
+                for idx, image_data in enumerate(images):
+                    print(f"📄 正在处理第 {idx + 1} 页图像")
+                    image_bytes_io = io.BytesIO(image_data)
+                    img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
+                    for block in img_response["Blocks"]:
+                        if block["BlockType"] == "LINE":
+                            all_text.append(block["Text"])
+                full_text = "\n".join(all_text)
+        elif file_suffix in ["jpg", "jpeg", "png"]:
+            print("🖼️ 图片文件，直接 OCR")
             response = textract.detect_document_text(Document={"Bytes": file_bytes})
             lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
             full_text = "\n".join(lines)
         else:
-            images = pdf_to_images(file_bytes)
-            if not images:
-                raise ValueError("PDF 转图片失败")
-            all_text = []
-            for image_data in images:
-                image_bytes_io = io.BytesIO(image_data)
-                img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
-                for block in img_response["Blocks"]:
-                    if block["BlockType"] == "LINE":
-                        all_text.append(block["Text"])
-            full_text = "\n".join(all_text)
-    elif file_suffix in ["jpg", "jpeg", "png"]:
-        response = textract.detect_document_text(Document={"Bytes": file_bytes})
-        lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
-        full_text = "\n".join(lines)
-    else:
-        raise ValueError("不支持的文件格式")
+            print("❌ 不支持的文件类型")
+            raise ValueError("不支持的文件格式")
 
-    data = {
-        "company": extract_company_name(full_text),
-        "total_premium": extract_total_premium(full_text),
-        "policy_term": extract_policy_term(full_text),
-        "liability": extract_liability(full_text),
-        "uninsured_motorist": extract_uninsured_motorist(full_text),
-        "medical_payment": extract_medical_payment(full_text),
-        "personal_injury": extract_personal_injury(full_text),
-        "vehicles": extract_vehicles(full_text)
-    }
+        print("📄 OCR 文本提取完成，共", len(full_text), "字符")
+        data = {
+            "company": extract_company_name(full_text),
+            "total_premium": extract_total_premium(full_text),
+            "policy_term": extract_policy_term(full_text),
+            "liability": extract_liability(full_text),
+            "uninsured_motorist": extract_uninsured_motorist(full_text),
+            "medical_payment": extract_medical_payment(full_text),
+            "personal_injury": extract_personal_injury(full_text),
+            "vehicles": extract_vehicles(full_text)
+        }
 
-    return (data, full_text) if return_raw_text else data
+        print("✅ 字段提取完成")
+        return (data, full_text) if return_raw_text else data
 
+    except Exception as e:
+        print("❌ 异常发生：", str(e))
+        traceback.print_exc()
+        raise
 
 def pdf_to_images(pdf_bytes):
     images = []
@@ -72,7 +87,6 @@ def pdf_to_images(pdf_bytes):
         images.append(img_buffer.getvalue())
     return images
 
-
 def extract_company_name(text):
     if "Progressive" in text:
         return "Progressive"
@@ -80,20 +94,17 @@ def extract_company_name(text):
         return "Travelers"
     return "某保险公司"
 
-
 def extract_total_premium(text):
     match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     return ""
 
-
 def extract_policy_term(text):
     match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}个月"
     return ""
-
 
 def extract_liability(text):
     result = {
@@ -110,7 +121,6 @@ def extract_liability(text):
         result["bi_per_accident"] = f"${bi_match.group(2)}"
         result["pd"] = f"${pd_match.group(1)}"
     return result
-
 
 def extract_uninsured_motorist(text):
     result = {
@@ -131,7 +141,6 @@ def extract_uninsured_motorist(text):
             result["pd"] = f"${pd_match.group(1)}"
     return result
 
-
 def extract_medical_payment(text):
     result = {"selected": False, "med": ""}
     match = re.search(r"Medical Payments\s*\$([\d,]+)", text)
@@ -140,7 +149,6 @@ def extract_medical_payment(text):
         result["med"] = f"${match.group(1)}"
     return result
 
-
 def extract_personal_injury(text):
     result = {"selected": False, "pip": ""}
     match = re.search(r"Personal Injury Protection\s*\$([\d,]+)", text)
@@ -148,7 +156,6 @@ def extract_personal_injury(text):
         result["selected"] = True
         result["pip"] = f"${match.group(1)}"
     return result
-
 
 def extract_vehicles(text):
     vehicles = []
@@ -170,14 +177,12 @@ def extract_vehicles(text):
         vehicles.append(vehicle)
     return vehicles
 
-
 def extract_model_line(block, vin):
     lines = block.strip().split("\n")
     for i, line in enumerate(lines):
         if vin in line and i > 0:
             return lines[i - 1]
     return "未知车型"
-
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
@@ -187,7 +192,6 @@ def extract_deductible(text, keyword):
         result["deductible"] = match.group(1)
     return result
 
-
 def extract_rental(text):
     result = {"selected": False, "limit": ""}
     match = re.search(r"Rental.*?([\d,]+)/([\d,]+)", text)
@@ -195,7 +199,6 @@ def extract_rental(text):
         result["selected"] = True
         result["limit"] = f"{match.group(1)}/{match.group(2)}"
     return result
-
 
 def extract_presence(text, keyword):
     return {"selected": keyword.lower() in text.lower()}
