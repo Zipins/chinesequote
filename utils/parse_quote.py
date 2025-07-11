@@ -1,9 +1,9 @@
-# utils/parse_quote.py
+# utils/parse_quote.py（修复字段提取逻辑）
 import boto3
 import os
 import io
 import re
-import fitz  # PyMuPDF
+import fitz
 from PIL import Image
 from typing import Dict
 import tempfile
@@ -28,7 +28,6 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     ext = filename.lower().split(".")[-1]
     client = boto3.client("textract", region_name=os.getenv("AWS_REGION", "us-east-1"))
 
-    # ✅ 渲染 PDF 为图片再识别，兼容 Textract
     if ext == "pdf":
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = ""
@@ -44,7 +43,6 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
                 text += page_text + "\n"
         return text
 
-    # ✅ 图片上传：JPG / PNG
     elif ext in ["png", "jpg", "jpeg"]:
         image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
         buffer = io.BytesIO()
@@ -56,23 +54,14 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     else:
         raise ValueError("不支持的文件类型")
 
-# ✅ 智能识别保险公司
 def extract_company_name(text: str) -> str:
-    known_companies = [
-        "Progressive", "Travelers", "Safeco", "Allstate", "State Farm",
-        "GEICO", "Liberty Mutual", "Nationwide", "Bristol West",
-        "Mercury", "Amica", "Hartford", "Kemper", "Infinity"
-    ]
+    known_companies = ["Progressive", "Travelers", "Safeco", "Allstate", "GEICO", "Liberty Mutual"]
     for company in known_companies:
         if company.lower() in text.lower():
             return company
-
     match = re.search(r"(?:Underwritten by|Quote from|Provided by)[\s:]*([A-Za-z0-9 &.,\-]+)", text, re.IGNORECASE)
     if match:
-        raw_name = match.group(1).strip()
-        clean_name = re.sub(r"\b(Inc|Co|LLC|Ltd)\b\.?", "", raw_name).strip()
-        return clean_name
-
+        return re.sub(r"\b(Inc|Co|LLC|Ltd)\b\.?", "", match.group(1)).strip()
     return "某保险公司"
 
 def extract_term(text):
@@ -85,20 +74,21 @@ def extract_premium(text):
 
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
-    if "Liability to Others" in text or "Bodily Injury Liability" in text:
-        bi = re.search(r"Bodily Injury Liability.*?\$([\d,]+)[^\d]+[\$/]*([\d,]+)", text)
-        pd = re.search(r"Property Damage Liability.*?\$([\d,]+)", text)
-        if bi and pd:
-            result["selected"] = True
-            result["bi_per_person"] = bi.group(1)
-            result["bi_per_accident"] = bi.group(2)
-            result["pd"] = pd.group(1)
+    bi = re.search(r"Bodily Injury Liability\s*\$([\d,]+)[^\d]+([\d,]+)", text, re.IGNORECASE)
+    pd = re.search(r"Property Damage Liability\s*\$([\d,]+)", text, re.IGNORECASE)
+    if bi and pd:
+        result["selected"] = True
+        result["bi_per_person"] = bi.group(1)
+        result["bi_per_accident"] = bi.group(2)
+        result["pd"] = pd.group(1)
     return result
 
 def extract_uninsured(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
-    bi = re.search(r"Uninsured.*?Bodily Injury.*?\$([\d,]+)[^\d]+[\$/]*([\d,]+)", text, re.IGNORECASE)
-    pd = re.search(r"Uninsured.*?Property Damage.*?\$([\d,]+)", text, re.IGNORECASE)
+
+    bi = re.search(r"Uninsured/Underinsured Motorist Bodily Injury\s*\$([\d,]+)[^\d]+([\d,]+)", text, re.IGNORECASE)
+    pd = re.search(r"Uninsured/Underinsured Motorist Property Damage\s*\$([\d,]+)", text, re.IGNORECASE)
+
     if bi:
         result["selected"] = True
         result["bi_per_person"] = bi.group(1)
@@ -109,7 +99,7 @@ def extract_uninsured(text):
 
 def extract_medpay(text):
     result = {"selected": False, "med": ""}
-    match = re.search(r"Medical Payments.*?\$([\d,]+)", text, re.IGNORECASE)
+    match = re.search(r"Medical Payments\s*\$([\d,]+)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["med"] = match.group(1)
@@ -117,7 +107,7 @@ def extract_medpay(text):
 
 def extract_pip(text):
     result = {"selected": False, "pip": ""}
-    match = re.search(r"Personal Injury Protection.*?\$([\d,]+)", text, re.IGNORECASE)
+    match = re.search(r"Personal Injury Protection\s*\$([\d,]+)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["pip"] = match.group(1)
