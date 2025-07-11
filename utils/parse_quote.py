@@ -4,7 +4,6 @@ import io
 import fitz  # PyMuPDF
 from PIL import Image
 
-
 def extract_quote_data(file, return_raw_text=False):
     file_bytes = file.read()
     file.seek(0)
@@ -28,11 +27,18 @@ def extract_quote_data(file, return_raw_text=False):
             # 文本型 PDF → 直接上传给 Textract
             response = textract.detect_document_text(Document={"Bytes": file_bytes})
         else:
-            # 扫描件 PDF → 转为图片后上传
+            # 扫描件 PDF → 转为图片后上传（每页单独发起 Textract 调用）
             images = pdf_to_images(file_bytes)
             if not images:
                 raise ValueError("PDF 转图片失败")
-            response = textract.detect_document_text(Document={"Bytes": images[0]})
+
+            full_lines = []
+            for img_bytes in images:
+                page_response = textract.detect_document_text(Document={"Bytes": img_bytes})
+                full_lines += [block["Text"] for block in page_response["Blocks"] if block["BlockType"] == "LINE"]
+
+            full_text = "\n".join(full_lines)
+            return _parse_text(full_text, return_raw_text)
 
     elif file_suffix in ["jpg", "jpeg", "png"]:
         response = textract.detect_document_text(Document={"Bytes": file_bytes})
@@ -41,7 +47,9 @@ def extract_quote_data(file, return_raw_text=False):
 
     lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
     full_text = "\n".join(lines)
+    return _parse_text(full_text, return_raw_text)
 
+def _parse_text(full_text, return_raw_text):
     data = {
         "company": extract_company_name(full_text),
         "total_premium": extract_total_premium(full_text),
@@ -52,9 +60,7 @@ def extract_quote_data(file, return_raw_text=False):
         "personal_injury": extract_personal_injury(full_text),
         "vehicles": extract_vehicles(full_text)
     }
-
     return (data, full_text) if return_raw_text else data
-
 
 def pdf_to_images(pdf_bytes):
     images = []
