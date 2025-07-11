@@ -28,22 +28,32 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     ext = filename.lower().split(".")[-1]
     client = boto3.client("textract", region_name=os.getenv("AWS_REGION", "us-east-1"))
 
-    if ext in ["png", "jpg", "jpeg"]:
+    # PDF：每页渲染成图片上传（解决 UnsupportedDocumentException）
+    if ext == "pdf":
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        text = ""
+        for page in doc:
+            pix = page.get_pixmap(dpi=300)
+            image_bytes = pix.tobytes("png")
+            response = client.detect_document_text(Document={'Bytes': image_bytes})
+            blocks = response.get("Blocks", [])
+            page_text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
+            text += page_text + "\n"
+        return text
+
+    # PNG/JPG 图像处理
+    elif ext in ["png", "jpg", "jpeg"]:
         image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         textract_doc = {'Bytes': buffer.getvalue()}
         response = client.detect_document_text(Document=textract_doc)
-
-    elif ext == "pdf":
-        response = client.detect_document_text(Document={'Bytes': file_bytes})
+        blocks = response.get("Blocks", [])
+        text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
+        return text
 
     else:
         raise ValueError("不支持的文件类型")
-
-    blocks = response.get("Blocks", [])
-    text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
-    return text
 
 # ✅ 智能保险公司识别
 def extract_company_name(text: str) -> str:
