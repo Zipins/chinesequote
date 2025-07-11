@@ -7,7 +7,7 @@ def extract_quote_data(file, return_raw_text=False):
     file_bytes = file.read()
 
     # 调用 Textract
-    client = boto3.client("textract")
+    client = boto3.client("textract", region_name="us-east-1")
     response = client.detect_document_text(Document={"Bytes": file_bytes})
 
     lines = []
