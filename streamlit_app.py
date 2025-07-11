@@ -1,4 +1,3 @@
-# streamlit_app.py
 import streamlit as st
 import os
 from utils.parse_quote import extract_quote_data
@@ -12,7 +11,6 @@ st.markdown("请上传保险 quote 文件（支持 PDF 或图片），系统将�
 
 uploaded_file = st.file_uploader("上传 PDF 或 图片文件", type=["pdf", "png", "jpg", "jpeg"])
 custom_name = st.text_input("输出文件名称（可选）：", value="中文保单")
-
 show_ocr = st.checkbox("🔍 显示原始识别文本（用于调试）")
 
 if uploaded_file and st.button("生成保单"):
@@ -21,10 +19,14 @@ if uploaded_file and st.button("生成保单"):
             # 提取 quote 信息和 OCR 原文
             data, ocr_text = extract_quote_data(uploaded_file, return_raw_text=True)
 
-            # 可选显示 OCR 文本（调试用）
+            # 显示结构化 JSON（始终可见）
+            with st.expander("🔍 提取信息预览", expanded=True):
+                st.json(data)
+
+            # 可选显示 OCR 文本（用于调试）
             if show_ocr:
-                st.subheader("📝 识别出的原始文本内容：")
-                st.code(ocr_text[:10000], language="text")  # 最多展示 10000 字符
+                with st.expander("🧾 原始 OCR 文本（仅供调试）", expanded=True):
+                    st.text(ocr_text[:10000])  # 最多展示前 10000 字符
 
             # 检查模板路径
             template_path = "template/保单范例.docx"
@@ -48,3 +50,4 @@ if uploaded_file and st.button("生成保单"):
 
     except Exception as e:
         st.error(f"❌ 出错了：{e}")
+
