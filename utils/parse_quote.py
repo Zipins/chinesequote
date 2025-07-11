@@ -7,7 +7,7 @@ from PIL import Image
 
 def extract_quote_data(file, return_raw_text=False):
     file_bytes = file.read()
-    file.seek(0)
+    pdf_bytes_for_fitz = file_bytes  # ✅ 用于判断是否为文本型 PDF
     file_suffix = file.name.split(".")[-1].lower()
 
     textract = boto3.client("textract", region_name="us-east-1")
@@ -23,8 +23,10 @@ def extract_quote_data(file, return_raw_text=False):
             return False
 
     if file_suffix == "pdf":
-        if is_pdf_text_based(file_bytes):
+        if is_pdf_text_based(pdf_bytes_for_fitz):
             response = textract.detect_document_text(Document={"Bytes": file_bytes})
+            lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+            full_text = "\n".join(lines)
         else:
             images = pdf_to_images(file_bytes)
             if not images:
