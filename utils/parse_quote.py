@@ -1,21 +1,46 @@
 import boto3
 import re
+import io
 import fitz  # PyMuPDF
 from PIL import Image
-import io
+
 
 def extract_quote_data(file, return_raw_text=False):
-    images = convert_pdf_to_images(file)
+    file_bytes = file.read()
+    file.seek(0)
+    file_suffix = file.name.split(".")[-1].lower()
+
     textract = boto3.client("textract", region_name="us-east-1")
-    full_text = ""
-    for image in images:
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-        response = textract.detect_document_text(Document={"Bytes": buffer.read()})
-        for block in response["Blocks"]:
-            if block["BlockType"] == "LINE":
-                full_text += block["Text"] + "\n"
+
+    # 判断 PDF 是文本型还是扫描型
+    def is_pdf_text_based(pdf_bytes):
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page in doc:
+                if page.get_text().strip():
+                    return True
+            return False
+        except Exception:
+            return False
+
+    if file_suffix == "pdf":
+        if is_pdf_text_based(file_bytes):
+            # 文本型 PDF → 直接上传给 Textract
+            response = textract.detect_document_text(Document={"Bytes": file_bytes})
+        else:
+            # 扫描件 PDF → 转为图片后上传
+            images = pdf_to_images(file_bytes)
+            if not images:
+                raise ValueError("PDF 转图片失败")
+            response = textract.detect_document_text(Document={"Bytes": images[0]})
+
+    elif file_suffix in ["jpg", "jpeg", "png"]:
+        response = textract.detect_document_text(Document={"Bytes": file_bytes})
+    else:
+        raise ValueError("不支持的文件格式")
+
+    lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+    full_text = "\n".join(lines)
 
     data = {
         "company": extract_company_name(full_text),
@@ -30,14 +55,17 @@ def extract_quote_data(file, return_raw_text=False):
 
     return (data, full_text) if return_raw_text else data
 
-def convert_pdf_to_images(file):
+
+def pdf_to_images(pdf_bytes):
     images = []
-    doc = fitz.open(stream=file.read(), filetype="pdf")
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     for page in doc:
         pix = page.get_pixmap(dpi=300)
-        img = Image.open(io.BytesIO(pix.tobytes("png")))
-        images.append(img)
+        img_bytes = pix.tobytes("png")
+        images.append(img_bytes)
     return images
+
+# 以下为原有字段提取函数不变
 
 def extract_company_name(text):
     if "Progressive" in text:
@@ -59,7 +87,12 @@ def extract_policy_term(text):
     return ""
 
 def extract_liability(text):
-    result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
+    result = {
+        "selected": False,
+        "bi_per_person": "",
+        "bi_per_accident": "",
+        "pd": ""
+    }
     bi_match = re.search(r"Bodily Injury Liability\s*\$([\d,]+)[^\d]+([\d,]+)", text)
     pd_match = re.search(r"Property Damage Liability\s*\$([\d,]+)", text)
     if bi_match and pd_match:
@@ -70,7 +103,13 @@ def extract_liability(text):
     return result
 
 def extract_uninsured_motorist(text):
-    result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
+    result = {
+        "selected": False,
+        "bi_per_person": "",
+        "bi_per_accident": "",
+        "pd": "",
+        "deductible": "250"
+    }
     bi_match = re.search(r"Uninsured/Underinsured Motorist Bodily Injury\s*\$([\d,]+)[^\d]+([\d,]+)", text)
     pd_match = re.search(r"Uninsured/Underinsured Motorist Property Damage\s*\$([\d,]+)", text)
     if bi_match or pd_match:
@@ -113,7 +152,7 @@ def extract_vehicles(text):
             "collision": extract_deductible(block, "Collision"),
             "comprehensive": extract_deductible(block, "Comprehensive"),
             "rental": extract_rental(block),
-            "roadside": extract_presence(block, "Roadside Assistance")
+            "roadside": extract_presence(block, "Roadside Assistance"),
         }
         vehicles.append(vehicle)
     return vehicles
