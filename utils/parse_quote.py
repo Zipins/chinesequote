@@ -47,6 +47,7 @@ def extract_quote_data(file, return_raw_text=False):
                 for idx, image_data in enumerate(images):
                     print(f"📄 正在处理第 {idx + 1} 页图像")
                     image_bytes_io = io.BytesIO(image_data)
+                    image_bytes_io.seek(0)  # ✅ 修复 Textract 读取位置
                     img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
                     for block in img_response["Blocks"]:
                         if block["BlockType"] == "LINE":
