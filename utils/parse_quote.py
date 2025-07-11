@@ -6,7 +6,6 @@ from PIL import Image
 import traceback
 from copy import deepcopy
 
-
 def extract_quote_data(file, return_raw_text=False):
     file_bytes_raw = file.read()
     file_bytes = deepcopy(file_bytes_raw)
@@ -64,6 +63,8 @@ def extract_quote_data(file, return_raw_text=False):
             raise ValueError("不支持的文件格式")
 
         print("\U0001F4C4 OCR 文本提取完成，共", len(full_text), "字符")
+        print("--- OCR 提取内容预览 ---\n", full_text[:1000], "\n--- END ---")
+
         data = {
             "company": extract_company_name(full_text),
             "total_premium": extract_total_premium(full_text),
@@ -75,14 +76,16 @@ def extract_quote_data(file, return_raw_text=False):
             "vehicles": extract_vehicles(full_text)
         }
 
-        print("✅ 字段提取完成")
+        print("✅ 字段提取完成:")
+        for k, v in data.items():
+            print(k, ":", v)
+
         return (data, full_text) if return_raw_text else data
 
     except Exception as e:
         print("❌ 异常发生：", str(e))
         traceback.print_exc()
         raise
-
 
 def pdf_to_images(pdf_bytes):
     images = []
@@ -95,7 +98,6 @@ def pdf_to_images(pdf_bytes):
         images.append(img_buffer.getvalue())
     return images
 
-
 def extract_company_name(text):
     if "Progressive" in text:
         return "Progressive"
@@ -103,20 +105,17 @@ def extract_company_name(text):
         return "Travelers"
     return "某保险公司"
 
-
 def extract_total_premium(text):
-    match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"Total.*?policy premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     return ""
-
 
 def extract_policy_term(text):
     match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}个月"
     return ""
-
 
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
@@ -128,7 +127,6 @@ def extract_liability(text):
         result["bi_per_accident"] = f"${bi_match.group(2)}"
         result["pd"] = f"${pd_match.group(1)}"
     return result
-
 
 def extract_uninsured_motorist(text):
     result = {
@@ -146,7 +144,6 @@ def extract_uninsured_motorist(text):
             result["pd"] = f"${pd_match.group(1)}"
     return result
 
-
 def extract_medical_payment(text):
     result = {"selected": False, "med": ""}
     match = re.search(r"Medical Payments\s*\$([\d,]+)", text)
@@ -155,7 +152,6 @@ def extract_medical_payment(text):
         result["med"] = f"${match.group(1)}"
     return result
 
-
 def extract_personal_injury(text):
     result = {"selected": False, "pip": ""}
     match = re.search(r"Personal Injury Protection\s*\$([\d,]+)", text)
@@ -163,7 +159,6 @@ def extract_personal_injury(text):
         result["selected"] = True
         result["pip"] = f"${match.group(1)}"
     return result
-
 
 def extract_vehicles(text):
     vehicles = []
@@ -185,14 +180,15 @@ def extract_vehicles(text):
         vehicles.append(vehicle)
     return vehicles
 
-
 def extract_model_line(block, vin):
     lines = block.strip().split("\n")
     for i, line in enumerate(lines):
-        if vin in line and i > 0:
-            return lines[i - 1]
+        if vin in line:
+            for j in range(i - 1, max(i - 3, -1), -1):
+                if re.search(r"\d{4} .*", lines[j]):
+                    return lines[j]
+            return "未知车型"
     return "未知车型"
-
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
@@ -202,15 +198,13 @@ def extract_deductible(text, keyword):
         result["deductible"] = match.group(1)
     return result
 
-
 def extract_rental(text):
     result = {"selected": False, "limit": ""}
-    match = re.search(r"Rental.*?([\d,]+)/([\d,]+)", text)
+    match = re.search(r"Rental.*?\$?([\d,]+)[^\d]+(\d+)[^\d]*day", text)
     if match:
         result["selected"] = True
         result["limit"] = f"{match.group(1)}/{match.group(2)}"
     return result
-
 
 def extract_presence(text, keyword):
     return {"selected": keyword.lower() in text.lower()}
