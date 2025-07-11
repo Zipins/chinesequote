@@ -3,3 +3,4 @@ python-docx
 boto3
 Pillow
 PyMuPDF
+Pillow
