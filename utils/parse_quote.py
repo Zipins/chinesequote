@@ -8,10 +8,9 @@ from copy import deepcopy
 
 
 def extract_quote_data(file, return_raw_text=False):
-    # ✅ 统一读取为副本，避免 streamlit file.read() 多次无效
     file_bytes_raw = file.read()
-    file_bytes = deepcopy(file_bytes_raw)  # 保留原始内容
-    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)  # 用于 fitz 分析
+    file_bytes = deepcopy(file_bytes_raw)
+    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)
     file_suffix = file.name.split(".")[-1].lower()
 
     textract = boto3.client("textract", region_name="us-east-1")
@@ -27,10 +26,10 @@ def extract_quote_data(file, return_raw_text=False):
             return False
 
     try:
-        print("📥 文件类型:", file_suffix)
+        print("\U0001F4E5 文件类型:", file_suffix)
 
         if file_suffix == "pdf":
-            print("🔍 PDF 文件，判断是否为文本型...")
+            print("\U0001F50D PDF 文件，判断是否为文本型...")
             if is_pdf_text_based(pdf_bytes_for_fitz):
                 print("✅ 是文本型 PDF，使用 PyMuPDF 提取文本")
                 doc = fitz.open(stream=pdf_bytes_for_fitz, filetype="pdf")
@@ -39,22 +38,22 @@ def extract_quote_data(file, return_raw_text=False):
                     lines.extend(page.get_text().splitlines())
                 full_text = "\n".join(lines)
             else:
-                print("📷 是扫描型 PDF，将 PDF 转为图片进行 OCR")
+                print("\U0001F5BC 是扫描型 PDF，将 PDF 转为图片进行 OCR")
                 images = pdf_to_images(file_bytes)
                 if not images:
                     raise ValueError("PDF 转图片失败")
                 all_text = []
                 for idx, image_data in enumerate(images):
-                    print(f"📄 正在处理第 {idx + 1} 页图像")
+                    print(f"\U0001F4C4 正在处理第 {idx + 1} 页图像")
                     image_bytes_io = io.BytesIO(image_data)
-                    image_bytes_io.seek(0)  # ✅ 修复 Textract 读取位置
+                    image_bytes_io.seek(0)
                     img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
-                    for block in img_response["Blocks"]:
-                        if block["BlockType"] == "LINE":
-                            all_text.append(block["Text"])
+                    for block in img_response.get("Blocks", []):
+                        if block.get("BlockType") == "LINE":
+                            all_text.append(block.get("Text", ""))
                 full_text = "\n".join(all_text)
         elif file_suffix in ["jpg", "jpeg", "png"]:
-            print("🖼️ 图片文件，直接 OCR")
+            print("\U0001F5BC️ 图片文件，直接 OCR")
             response = textract.detect_document_text(Document={"Bytes": file_bytes})
             lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
             full_text = "\n".join(lines)
@@ -62,7 +61,7 @@ def extract_quote_data(file, return_raw_text=False):
             print("❌ 不支持的文件类型")
             raise ValueError("不支持的文件格式")
 
-        print("📄 OCR 文本提取完成，共", len(full_text), "字符")
+        print("\U0001F4C4 OCR 文本提取完成，共", len(full_text), "字符")
         data = {
             "company": extract_company_name(full_text),
             "total_premium": extract_total_premium(full_text),
@@ -118,12 +117,7 @@ def extract_policy_term(text):
 
 
 def extract_liability(text):
-    result = {
-        "selected": False,
-        "bi_per_person": "",
-        "bi_per_accident": "",
-        "pd": ""
-    }
+    result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
     bi_match = re.search(r"Bodily Injury Liability\s*\$([\d,]+)[^\d]+([\d,]+)", text)
     pd_match = re.search(r"Property Damage Liability\s*\$([\d,]+)", text)
     if bi_match and pd_match:
@@ -136,11 +130,8 @@ def extract_liability(text):
 
 def extract_uninsured_motorist(text):
     result = {
-        "selected": False,
-        "bi_per_person": "",
-        "bi_per_accident": "",
-        "pd": "",
-        "deductible": "250"
+        "selected": False, "bi_per_person": "", "bi_per_accident": "",
+        "pd": "", "deductible": "250"
     }
     bi_match = re.search(r"Uninsured/Underinsured Motorist Bodily Injury\s*\$([\d,]+)[^\d]+([\d,]+)", text)
     pd_match = re.search(r"Uninsured/Underinsured Motorist Property Damage\s*\$([\d,]+)", text)
