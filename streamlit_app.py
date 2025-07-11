@@ -1,3 +1,5 @@
+import logging
+logging.basicConfig(level=logging.INFO)
 import streamlit as st
 import os
 from utils.parse_quote import extract_quote_data
