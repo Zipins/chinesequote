@@ -1,6 +1,6 @@
 import streamlit as st
 from utils.parse_quote import extract_quote_data
-from utils.generate_policy import generate_policy_doc
+from utils.generate_policy import generate_policy_docx
 import os
 import datetime
 import tempfile
