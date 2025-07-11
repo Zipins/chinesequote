@@ -1,0 +1,5 @@
+streamlit
+python-docx
+boto3
+pdf2image
+Pillow
