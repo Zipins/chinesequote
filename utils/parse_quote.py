@@ -1,31 +1,21 @@
 import boto3
 import re
-import io
-from PyPDF2 import PdfReader
+import fitz  # PyMuPDF
 from PIL import Image
-from pdf2image import convert_from_bytes
-import tempfile
+import io
 
 def extract_quote_data(file, return_raw_text=False):
-    file_bytes = file.read()
-    filename = file.name.lower()
-
+    images = convert_pdf_to_images(file)
+    textract = boto3.client("textract", region_name="us-east-1")
     full_text = ""
-
-    if filename.endswith(".pdf"):
-        try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            full_text = "\n".join([page.extract_text() or "" for page in reader.pages])
-            if not full_text.strip():
-                raise ValueError("Empty text, fallback to Textract")
-        except:
-            images = convert_from_bytes(file_bytes)
-            full_text = textract_image_sequence(images)
-    elif filename.endswith(('.png', '.jpg', '.jpeg')):
-        image = Image.open(io.BytesIO(file_bytes))
-        full_text = textract_image(image)
-    else:
-        raise ValueError("Unsupported file format")
+    for image in images:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        response = textract.detect_document_text(Document={"Bytes": buffer.read()})
+        for block in response["Blocks"]:
+            if block["BlockType"] == "LINE":
+                full_text += block["Text"] + "\n"
 
     data = {
         "company": extract_company_name(full_text),
@@ -40,21 +30,14 @@ def extract_quote_data(file, return_raw_text=False):
 
     return (data, full_text) if return_raw_text else data
 
-def textract_image(image):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        image.save(tmp.name, format="PNG")
-        with open(tmp.name, "rb") as f:
-            image_bytes = f.read()
-
-    client = boto3.client("textract", region_name="us-east-1")
-    response = client.detect_document_text(Document={"Bytes": image_bytes})
-    lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
-    return "\n".join(lines)
-
-def textract_image_sequence(images):
-    return "\n".join(textract_image(img) for img in images)
-
-# 字段提取函数
+def convert_pdf_to_images(file):
+    images = []
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    for page in doc:
+        pix = page.get_pixmap(dpi=300)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        images.append(img)
+    return images
 
 def extract_company_name(text):
     if "Progressive" in text:
@@ -65,11 +48,15 @@ def extract_company_name(text):
 
 def extract_total_premium(text):
     match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
-    return f"${match.group(1)}" if match else ""
+    if match:
+        return f"${match.group(1)}"
+    return ""
 
 def extract_policy_term(text):
     match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
-    return f"{match.group(1)}个月" if match else ""
+    if match:
+        return f"{match.group(1)}个月"
+    return ""
 
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
@@ -113,8 +100,8 @@ def extract_personal_injury(text):
 
 def extract_vehicles(text):
     vehicles = []
-    blocks = re.split(r"(?=VIN[:\s])", text)
-    for block in blocks:
+    vehicle_blocks = re.split(r"(?=VIN[:\s])", text)
+    for block in vehicle_blocks:
         vin_match = re.search(r"VIN[:\s]*([A-HJ-NPR-Z0-9]{17})", block)
         if not vin_match:
             continue
@@ -126,7 +113,7 @@ def extract_vehicles(text):
             "collision": extract_deductible(block, "Collision"),
             "comprehensive": extract_deductible(block, "Comprehensive"),
             "rental": extract_rental(block),
-            "roadside": extract_presence(block, "Roadside Assistance"),
+            "roadside": extract_presence(block, "Roadside Assistance")
         }
         vehicles.append(vehicle)
     return vehicles
