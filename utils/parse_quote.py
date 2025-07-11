@@ -11,11 +11,14 @@ def format_dollar(amount):
     return "$" + "{:,}".format(int(amount.replace("$", "").replace(",", "").strip()))
 
 def extract_text_from_file(file_bytes, filename):
-    textract = boto3.client(
-       "textract",
-       region_name=os.getenv("AWS_REGION"),
-       aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-       aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+import os
+import boto3
+
+textract = boto3.client(
+    "textract",
+    region_name=os.getenv("AWS_REGION"),
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
 )
     
     if filename.lower().endswith(".pdf"):
