@@ -4,10 +4,14 @@ import io
 import fitz  # PyMuPDF
 from PIL import Image
 import traceback
+from copy import deepcopy
+
 
 def extract_quote_data(file, return_raw_text=False):
-    file_bytes = file.read()
-    pdf_bytes_for_fitz = file_bytes  # ✅ 用于判断是否为文本型 PDF
+    # ✅ 统一读取为副本，避免 streamlit file.read() 多次无效
+    file_bytes_raw = file.read()
+    file_bytes = deepcopy(file_bytes_raw)  # 给 Textract 用
+    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)  # 给 fitz 用
     file_suffix = file.name.split(".")[-1].lower()
 
     textract = boto3.client("textract", region_name="us-east-1")
@@ -75,6 +79,7 @@ def extract_quote_data(file, return_raw_text=False):
         traceback.print_exc()
         raise
 
+
 def pdf_to_images(pdf_bytes):
     images = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -86,6 +91,7 @@ def pdf_to_images(pdf_bytes):
         images.append(img_buffer.getvalue())
     return images
 
+
 def extract_company_name(text):
     if "Progressive" in text:
         return "Progressive"
@@ -93,17 +99,20 @@ def extract_company_name(text):
         return "Travelers"
     return "某保险公司"
 
+
 def extract_total_premium(text):
     match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     return ""
 
+
 def extract_policy_term(text):
     match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}个月"
     return ""
+
 
 def extract_liability(text):
     result = {
@@ -120,6 +129,7 @@ def extract_liability(text):
         result["bi_per_accident"] = f"${bi_match.group(2)}"
         result["pd"] = f"${pd_match.group(1)}"
     return result
+
 
 def extract_uninsured_motorist(text):
     result = {
@@ -140,6 +150,7 @@ def extract_uninsured_motorist(text):
             result["pd"] = f"${pd_match.group(1)}"
     return result
 
+
 def extract_medical_payment(text):
     result = {"selected": False, "med": ""}
     match = re.search(r"Medical Payments\s*\$([\d,]+)", text)
@@ -148,6 +159,7 @@ def extract_medical_payment(text):
         result["med"] = f"${match.group(1)}"
     return result
 
+
 def extract_personal_injury(text):
     result = {"selected": False, "pip": ""}
     match = re.search(r"Personal Injury Protection\s*\$([\d,]+)", text)
@@ -155,6 +167,7 @@ def extract_personal_injury(text):
         result["selected"] = True
         result["pip"] = f"${match.group(1)}"
     return result
+
 
 def extract_vehicles(text):
     vehicles = []
@@ -176,12 +189,14 @@ def extract_vehicles(text):
         vehicles.append(vehicle)
     return vehicles
 
+
 def extract_model_line(block, vin):
     lines = block.strip().split("\n")
     for i, line in enumerate(lines):
         if vin in line and i > 0:
             return lines[i - 1]
     return "未知车型"
+
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
@@ -191,6 +206,7 @@ def extract_deductible(text, keyword):
         result["deductible"] = match.group(1)
     return result
 
+
 def extract_rental(text):
     result = {"selected": False, "limit": ""}
     match = re.search(r"Rental.*?([\d,]+)/([\d,]+)", text)
@@ -198,6 +214,7 @@ def extract_rental(text):
         result["selected"] = True
         result["limit"] = f"{match.group(1)}/{match.group(2)}"
     return result
+
 
 def extract_presence(text, keyword):
     return {"selected": keyword.lower() in text.lower()}
