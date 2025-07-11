@@ -10,8 +10,8 @@ from copy import deepcopy
 def extract_quote_data(file, return_raw_text=False):
     # ✅ 统一读取为副本，避免 streamlit file.read() 多次无效
     file_bytes_raw = file.read()
-    file_bytes = deepcopy(file_bytes_raw)  # 给 Textract 用
-    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)  # 给 fitz 用
+    file_bytes = deepcopy(file_bytes_raw)  # 保留原始内容
+    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)  # 用于 fitz 分析
     file_suffix = file.name.split(".")[-1].lower()
 
     textract = boto3.client("textract", region_name="us-east-1")
@@ -32,12 +32,14 @@ def extract_quote_data(file, return_raw_text=False):
         if file_suffix == "pdf":
             print("🔍 PDF 文件，判断是否为文本型...")
             if is_pdf_text_based(pdf_bytes_for_fitz):
-                print("✅ 是文本型 PDF，使用 detect_document_text")
-                response = textract.detect_document_text(Document={"Bytes": file_bytes})
-                lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+                print("✅ 是文本型 PDF，使用 PyMuPDF 提取文本")
+                doc = fitz.open(stream=pdf_bytes_for_fitz, filetype="pdf")
+                lines = []
+                for page in doc:
+                    lines.extend(page.get_text().splitlines())
                 full_text = "\n".join(lines)
             else:
-                print("📷 是扫描型 PDF，将 PDF 转为图片进行处理")
+                print("📷 是扫描型 PDF，将 PDF 转为图片进行 OCR")
                 images = pdf_to_images(file_bytes)
                 if not images:
                     raise ValueError("PDF 转图片失败")
