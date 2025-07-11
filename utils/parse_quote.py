@@ -1,4 +1,3 @@
-# utils/parse_quote.py（修复字段提取逻辑）
 import boto3
 import os
 import io
@@ -74,21 +73,23 @@ def extract_premium(text):
 
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
-    bi = re.search(r"Bodily Injury Liability\s*\$([\d,]+)[^\d]+([\d,]+)", text, re.IGNORECASE)
-    pd = re.search(r"Property Damage Liability\s*\$([\d,]+)", text, re.IGNORECASE)
-    if bi and pd:
+    pattern_bi = re.search(
+        r"Bodily Injury Liability\s*\$?\s*([\d,]+)\s*[^0-9a-zA-Z]+([\d,]+)", text, re.IGNORECASE
+    )
+    pattern_pd = re.search(
+        r"Property Damage Liability\s*\$?\s*([\d,]+)", text, re.IGNORECASE
+    )
+    if pattern_bi and pattern_pd:
         result["selected"] = True
-        result["bi_per_person"] = bi.group(1)
-        result["bi_per_accident"] = bi.group(2)
-        result["pd"] = pd.group(1)
+        result["bi_per_person"] = pattern_bi.group(1)
+        result["bi_per_accident"] = pattern_bi.group(2)
+        result["pd"] = pattern_pd.group(1)
     return result
 
 def extract_uninsured(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
-
-    bi = re.search(r"Uninsured/Underinsured Motorist Bodily Injury\s*\$([\d,]+)[^\d]+([\d,]+)", text, re.IGNORECASE)
-    pd = re.search(r"Uninsured/Underinsured Motorist Property Damage\s*\$([\d,]+)", text, re.IGNORECASE)
-
+    bi = re.search(r"Uninsured.*?Bodily Injury\s*\$?\s*([\d,]+)[^\d]+([\d,]+)", text, re.IGNORECASE | re.DOTALL)
+    pd = re.search(r"Uninsured.*?Property Damage\s*\$?\s*([\d,]+)", text, re.IGNORECASE | re.DOTALL)
     if bi:
         result["selected"] = True
         result["bi_per_person"] = bi.group(1)
@@ -99,7 +100,7 @@ def extract_uninsured(text):
 
 def extract_medpay(text):
     result = {"selected": False, "med": ""}
-    match = re.search(r"Medical Payments\s*\$([\d,]+)", text, re.IGNORECASE)
+    match = re.search(r"Medical Payments\s*\$?\s*([\d,]+)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["med"] = match.group(1)
@@ -107,7 +108,7 @@ def extract_medpay(text):
 
 def extract_pip(text):
     result = {"selected": False, "pip": ""}
-    match = re.search(r"Personal Injury Protection\s*\$([\d,]+)", text, re.IGNORECASE)
+    match = re.search(r"Personal Injury Protection\s*\$?\s*([\d,]+)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["pip"] = match.group(1)
@@ -115,7 +116,7 @@ def extract_pip(text):
 
 def extract_vehicles(text):
     vehicles = []
-    vehicle_blocks = re.findall(r"(\d{4}\s+[A-Z0-9\- ]+)\s+VIN[:：]?\s*([A-HJ-NPR-Z0-9]{10,})", text)
+    vehicle_blocks = re.findall(r"(\d{4}\s+[A-Z0-9\- ]+?)\s+VIN[:：]?\s*([A-HJ-NPR-Z0-9]{10,})", text)
     for model_str, vin in vehicle_blocks:
         vehicles.append({
             "model": model_str.strip(),
