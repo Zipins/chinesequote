@@ -45,9 +45,11 @@ def extract_quote_data(file, return_raw_text=False):
                 all_text = []
                 for idx, image_data in enumerate(images):
                     print(f"\U0001F4C4 正在处理第 {idx + 1} 页图像")
-                    image_bytes_io = io.BytesIO(image_data)
-                    image_bytes_io.seek(0)
-                    img_response = textract.detect_document_text(Document={"Bytes": image_bytes_io.read()})
+                    img = Image.open(io.BytesIO(image_data)).convert("RGB")
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format="PNG")
+                    img_buffer.seek(0)
+                    img_response = textract.detect_document_text(Document={"Bytes": img_buffer.read()})
                     for block in img_response.get("Blocks", []):
                         if block.get("BlockType") == "LINE":
                             all_text.append(block.get("Text", ""))
