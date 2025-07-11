@@ -6,8 +6,8 @@ import re
 import fitz  # PyMuPDF
 from PIL import Image
 from typing import Dict
+import tempfile
 
-# ✅ 更新后的入口函数：接受 file_stream 和 filename
 def extract_quote_data(file_stream, filename: str) -> Dict:
     file_bytes = file_stream.read()
     text = extract_text_from_textract(file_bytes, filename)
@@ -24,23 +24,27 @@ def extract_quote_data(file_stream, filename: str) -> Dict:
     }
     return data
 
-# ✅ 自动识别文件类型（PDF 渲染为图像 → Textract）
 def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     ext = filename.lower().split(".")[-1]
     client = boto3.client("textract", region_name=os.getenv("AWS_REGION", "us-east-1"))
 
+    # ✅ 渲染 PDF 为图片再识别，兼容 Textract
     if ext == "pdf":
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         text = ""
         for page in doc:
             pix = page.get_pixmap(dpi=300)
-            image_bytes = pix.tobytes("png")
-            response = client.detect_document_text(Document={'Bytes': image_bytes})
-            blocks = response.get("Blocks", [])
-            page_text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
-            text += page_text + "\n"
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+                pix.save(tmp_img.name)
+                with open(tmp_img.name, "rb") as img_file:
+                    img_bytes = img_file.read()
+                response = client.detect_document_text(Document={'Bytes': img_bytes})
+                blocks = response.get("Blocks", [])
+                page_text = "\n".join(block["Text"] for block in blocks if block["BlockType"] == "LINE")
+                text += page_text + "\n"
         return text
 
+    # ✅ 图片上传：JPG / PNG
     elif ext in ["png", "jpg", "jpeg"]:
         image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
         buffer = io.BytesIO()
@@ -52,7 +56,7 @@ def extract_text_from_textract(file_bytes: bytes, filename: str) -> str:
     else:
         raise ValueError("不支持的文件类型")
 
-# ✅ 智能识别保险公司名称
+# ✅ 智能识别保险公司
 def extract_company_name(text: str) -> str:
     known_companies = [
         "Progressive", "Travelers", "Safeco", "Allstate", "State Farm",
