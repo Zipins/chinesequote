@@ -102,15 +102,24 @@ def pdf_to_images(pdf_bytes):
 
 
 def extract_company_name(text):
-    known_companies = ["Progressive", "Travelers", "Allstate", "Geico", "Liberty Mutual", "State Farm"]
-    for company in known_companies:
-        if company.lower() in text.lower():
-            return company
+    known_companies = {
+        "Progressive": "Progressive",
+        "Travelers": "Travelers",
+        "Allstate": "Allstate",
+        "Geico": "Geico",
+        "Liberty Mutual": "Liberty Mutual",
+        "State Farm": "State Farm",
+        "Safeco": "Safeco",
+        "Nationwide": "Nationwide"
+    }
+    for name in known_companies:
+        if name.lower() in text.lower():
+            return known_companies[name]
     return "某保险公司"
 
 
 def extract_total_premium(text):
-    match = re.search(r"Total.*?policy premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     return ""
@@ -195,10 +204,11 @@ def extract_model_line(block, vin):
     lines = block.strip().split("\n")
     for i, line in enumerate(lines):
         if vin in line:
-            for j in range(i - 1, max(i - 3, -1), -1):
+            if re.search(r"\d{4} .*", line):
+                return line
+            for j in range(i - 1, max(i - 4, -1), -1):
                 if re.search(r"\d{4} .*", lines[j]):
                     return lines[j]
-            return "未知车型"
     return "未知车型"
 
 
