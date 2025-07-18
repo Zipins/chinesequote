@@ -1,16 +1,17 @@
+# utils/generate_policy.py
+
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-import copy
 
 
 def generate_policy_docx(doc: Document, data: dict):
     replace_placeholder_text(doc, "XXXXXXXXXXX", data.get("company", "某保险公司"))
     replace_placeholder_text(doc, "$XXXXXX/X个月", f"{data.get('total_premium', '$XXX')}/{data.get('policy_term', '6个月')}")
 
-    # 写责任险
+    # 写入责任险
     write_checkbox_and_amount(doc, "Liability", data["liability"]["selected"])
     if data["liability"]["selected"]:
         replace_text_in_paragraphs(doc, "赔偿对方医疗费最高 $XXXX/人", f"赔偿对方医疗费最高 {data['liability']['bi_per_person']}/人")
@@ -21,80 +22,101 @@ def generate_policy_docx(doc: Document, data: dict):
         replace_text_in_paragraphs(doc, "赔偿对方医疗费总额最高$XXX", "")
         replace_text_in_paragraphs(doc, "赔偿对方车辆和财产损失最多 $XXXX", "")
 
-    # Uninsured Motorist
+    # 无保险驾驶者保障
     write_checkbox_and_amount(doc, "Uninsured Motorist", data["uninsured_motorist"]["selected"])
     if data["uninsured_motorist"]["selected"]:
-        replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", f"赔偿你和乘客医疗费{data['uninsured_motorist']['bi_per_person']}/人")
-        replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", f"一场事故最多赔偿医疗费{data['uninsured_motorist']['bi_per_accident']}")
-        replace_text_in_paragraphs(doc, "赔偿自己车辆最多 $XXX(自付额$250)", f"赔偿自己车辆最多 {data['uninsured_motorist']['pd']}(自付额$250)")
+        if data["uninsured_motorist"]["bi_per_person"]:
+            replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", f"赔偿你和乘客医疗费{data['uninsured_motorist']['bi_per_person']}/人")
+        else:
+            replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", "")
+        if data["uninsured_motorist"]["bi_per_accident"]:
+            replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", f"一场事故最多赔偿医疗费{data['uninsured_motorist']['bi_per_accident']}")
+        else:
+            replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", "")
+        if data["uninsured_motorist"]["pd"]:
+            replace_text_in_paragraphs(doc, "赔偿自己车辆最多 $XXX(自付额$250)", f"赔偿自己车辆最多 {data['uninsured_motorist']['pd']}(自付额$250)")
+        else:
+            replace_text_in_paragraphs(doc, "赔偿自己车辆最多 $XXX(自付额$250)", "")
     else:
         replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", "没有选择该项目")
         replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", "")
         replace_text_in_paragraphs(doc, "赔偿自己车辆最多 $XXX(自付额$250)", "")
 
-    # Medical Payment
+    # 医疗费用
     write_checkbox_and_amount(doc, "Medical Payment", data["medical_payment"]["selected"])
     if data["medical_payment"]["selected"]:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX", f"赔偿自己和自己车上乘客在事故中受伤的医疗费每人{data['medical_payment']['med']}")
     else:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX", "没有选择该项目")
 
-    # Personal Injury
+    # 人身伤害保护
     write_checkbox_and_amount(doc, "Personal Injury", data["personal_injury"]["selected"])
     if data["personal_injury"]["selected"]:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX", f"赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人{data['personal_injury']['pip']}")
     else:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX", "没有选择该项目")
 
-    # 插入多辆车的保障信息
-    insert_vehicle_sections(doc, data["vehicles"])
+    # 插入多辆车信息和保障表格
+    insert_vehicle_section(doc, data.get("vehicles", []))
 
 
-def insert_vehicle_sections(doc: Document, vehicles: list):
+def insert_vehicle_section(doc, vehicles):
     from docx.shared import RGBColor
-    from docx.oxml.ns import qn
+    from copy import deepcopy
 
-    # 找到模板中“车辆保障:”段落
-    insert_index = -1
-    for i, para in enumerate(doc.paragraphs):
-        if "车辆保障" in para.text:
-            insert_index = i
+    # 找到“车辆保障:”段落
+    marker_idx = -1
+    for i, p in enumerate(doc.paragraphs):
+        if "车辆保障:" in p.text:
+            marker_idx = i
             break
-    if insert_index == -1:
+    if marker_idx == -1:
         return
 
-    # 模板中示例表格（用于复制格式）
-    table_template = None
-    for table in doc.tables:
-        if "Collision" in table.cell(0, 0).text:
-            table_template = table
-            break
-    if not table_template:
-        return
+    marker = doc.paragraphs[marker_idx]._element
 
-    # 删除旧的表格和VIN段
-    for i in reversed(range(insert_index + 1, len(doc.paragraphs))):
-        if "VIN" in doc.paragraphs[i].text or "车辆" in doc.paragraphs[i].text:
-            p = doc.paragraphs[i]._element
-            p.getparent().remove(p)
+    # 清理原有车辆表格和 VIN 信息
+    next_el = marker.getnext()
+    while next_el is not None and next_el.tag.endswith("p") or next_el.tag.endswith("tbl"):
+        to_remove = next_el
+        next_el = next_el.getnext()
+        marker.getparent().remove(to_remove)
 
-    # 插入每辆车
-    for idx, v in enumerate(vehicles):
-        # 插入白色1pt空段
-        blank_para = doc.paragraphs[insert_index].insert_paragraph_after("·")
-        blank_para.runs[0].font.size = Pt(1)
-        blank_para.runs[0].font.color.rgb = RGBColor(255, 255, 255)
+    doc_paragraph = doc.paragraphs[marker_idx]
 
-        # 插入 VIN 信息段
-        vin_para = blank_para.insert_paragraph_after(f"{v['model']}     VIN：{v['vin']}")
-        vin_para.style.font.size = Pt(11)
+    for idx, vehicle in enumerate(vehicles):
+        # 添加视觉空行
+        spacer = OxmlElement('w:p')
+        spacer_p = doc_paragraph.insert_paragraph_before("·")
+        spacer_p.runs[0].font.size = Pt(1)
+        spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
+
+        # 添加车辆 VIN 段
+        vin_para = doc_paragraph.insert_paragraph_before(f"{vehicle['model']}     VIN：{vehicle['vin']}")
+        vin_para.runs[0].font.size = Pt(12)
+        vin_para.runs[0].bold = True
 
         # 插入新表格
-        new_table = copy.deepcopy(table_template._element)
-        doc.paragraphs[insert_index]._element.addnext(new_table)
-        table = Document().add_table(rows=5, cols=3)
-        table._element = new_table
-        fill_vehicle_table(table, v)
+        table = doc.add_table(rows=5, cols=3)
+        table.style = "Table Grid"
+        table.autofit = False
+        table.allow_autofit = False
+
+        headers = ["保险项目", "是否选择", "保额 / 说明"]
+        rows = ["Collision", "Comprehensive", "Roadside Assistance", "Rental Reimbursement"]
+        chinese_rows = [
+            "碰撞险", "车子损毁险", "道路救援", "租车报销"
+        ]
+        for j, header in enumerate(headers):
+            table.cell(0, j).text = header
+        for i in range(4):
+            table.cell(i + 1, 0).text = chinese_rows[i]
+
+        fill_vehicle_table(table, vehicle)
+
+        # 插入表格后移动位置
+        marker.addnext(table._element)
+        marker = table._element
 
 
 def fill_vehicle_table(table, vehicle):
@@ -109,7 +131,7 @@ def fill_vehicle_table(table, vehicle):
         table.cell(1, 2).text = "没有选择该项目"
 
     if vehicle["comprehensive"]["selected"]:
-        table.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}修车时自付额以内自己出，自付额以外的保险公司赔付"
+        table.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
     else:
         table.cell(2, 2).text = "没有选择该项目"
 
