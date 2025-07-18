@@ -2,7 +2,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import streamlit as st  # 用于调试输出金额字段
-print_all_paragraphs_with_dollar(doc)
+
 
 
 
