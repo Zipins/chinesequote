@@ -1,5 +1,3 @@
-# utils/generate_policy.py
-
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -53,7 +51,6 @@ def generate_policy_docx(doc: Document, data: dict):
 def insert_vehicle_section(doc, vehicles):
     from copy import deepcopy
 
-    # 找到“车辆保障:”段落
     marker_idx = -1
     for i, p in enumerate(doc.paragraphs):
         if "车辆保障:" in p.text:
@@ -63,8 +60,6 @@ def insert_vehicle_section(doc, vehicles):
         return
 
     marker = doc.paragraphs[marker_idx]._element
-
-    # 清理原有车辆表格和 VIN 信息
     next_el = marker.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
@@ -74,17 +69,14 @@ def insert_vehicle_section(doc, vehicles):
     doc_paragraph = doc.paragraphs[marker_idx]
 
     for vehicle in vehicles:
-        # 添加视觉空行
         spacer_p = doc_paragraph.insert_paragraph_before("·")
         spacer_p.runs[0].font.size = Pt(1)
         spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
 
-        # 添加 VIN 信息
         vin_para = doc_paragraph.insert_paragraph_before(f"{vehicle['model']}     VIN：{vehicle['vin']}")
         vin_para.runs[0].font.size = Pt(12)
         vin_para.runs[0].bold = True
 
-        # 添加表格
         table = doc.add_table(rows=5, cols=3)
         table.style = "Table Grid"
         table.autofit = False
@@ -136,16 +128,19 @@ def update_checkbox_cell(cell, selected):
     run.font.size = Pt(16)
 
 
-def replace_placeholder_text(doc, placeholder, replacement):
-    for paragraph in doc.paragraphs:
-        if placeholder in paragraph.text:
-            paragraph.text = paragraph.text.replace(placeholder, replacement)
-
-
 def replace_text_in_paragraphs(doc, old, new):
     for paragraph in doc.paragraphs:
-        if old in paragraph.text:
-            paragraph.text = paragraph.text.replace(old, new)
+        full_text = "".join(run.text for run in paragraph.runs)
+        if old in full_text:
+            new_text = full_text.replace(old, new)
+            for run in paragraph.runs:
+                run.text = ""
+            if paragraph.runs:
+                paragraph.runs[0].text = new_text
+
+
+def replace_placeholder_text(doc, placeholder, replacement):
+    replace_text_in_paragraphs(doc, placeholder, replacement)
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
