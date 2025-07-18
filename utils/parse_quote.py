@@ -119,7 +119,7 @@ def extract_company_name(text):
 
 
 def extract_total_premium(text):
-    match = re.search(r"Total\s+\d+\s+month.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"Total\s+\d+\s+month.*?[\r\n]+\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     return ""
@@ -181,15 +181,16 @@ def extract_personal_injury(text):
 
 def extract_vehicles(text):
     vehicles = []
-    vehicle_blocks = re.split(r"(?=VIN[:\s])", text)
-    for block in vehicle_blocks:
-        vin_match = re.search(r"VIN[:\s]*([A-HJ-NPR-Z0-9]{17})", block)
-        if not vin_match:
-            continue
-        vin = vin_match.group(1)
-        model_line = extract_model_line(block, vin)
+    pattern = re.compile(
+        r"(?P<model>\d{4}\s+[A-Z0-9\s]+?)\nVIN[:\s]*(?P<vin>[A-HJ-NPR-Z0-9]{17})(.*?)(?=\n\d{4}\s+[A-Z]|$)",
+        re.DOTALL
+    )
+    for match in pattern.finditer(text):
+        model = match.group("model").strip()
+        vin = match.group("vin").strip()
+        block = match.group(0)
         vehicle = {
-            "model": model_line.strip(),
+            "model": model,
             "vin": vin,
             "collision": extract_deductible(block, "Collision"),
             "comprehensive": extract_deductible(block, "Comprehensive"),
