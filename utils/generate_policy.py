@@ -1,9 +1,9 @@
+
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import streamlit as st  # 用于调试输出金额字段
-
-
+from docx.oxml import OxmlElement
+import streamlit as st
 
 
 def generate_policy_docx(doc: Document, data: dict):
@@ -48,8 +48,6 @@ def generate_policy_docx(doc: Document, data: dict):
 
     # 插入车辆保障表格
     insert_vehicle_section(doc, data.get("vehicles", []))
-
-    # 调试用：在 Streamlit 页面上展示所有包含金额字段的段落
     print_all_paragraphs_with_dollar(doc)
 
 
@@ -66,7 +64,6 @@ def insert_vehicle_section(doc, vehicles):
 
     marker = doc.paragraphs[marker_idx]._element
 
-    # 清除原有表格和 VIN 信息
     next_el = marker.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
@@ -108,12 +105,14 @@ def fill_vehicle_table(table, vehicle):
     update_checkbox_cell(table.cell(4, 1), vehicle["rental"]["selected"])
 
     if vehicle["collision"]["selected"]:
-        table.cell(1, 2).text = f"自付额${vehicle['collision']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
+        table.cell(1, 2).text = f"自付额${vehicle['collision']['deductible']}
+修车时自付额以内自己出，自付额以外的保险公司赔付"
     else:
         table.cell(1, 2).text = "没有选择该项目"
 
     if vehicle["comprehensive"]["selected"]:
-        table.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
+        table.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}
+修车时自付额以内自己出，自付额以外的保险公司赔付"
     else:
         table.cell(2, 2).text = "没有选择该项目"
 
@@ -143,14 +142,13 @@ def replace_placeholder_text(doc, placeholder, replacement):
 
 def replace_text_in_paragraphs(doc, old, new):
     for paragraph in doc.paragraphs:
-        full_text = "".join(run.text for run in paragraph.runs)
-        if old in full_text:
-            new_full_text = full_text.replace(old, new)
-            # 清空现有 runs
-            for run in paragraph.runs:
-                run.text = ""
-            # 只用一个 run 写入新内容
-            paragraph.runs[0].text = new_full_text
+        if old in paragraph.text:
+            full_text = "".join(run.text for run in paragraph.runs)
+            if old in full_text:
+                new_text = full_text.replace(old, new)
+                for run in paragraph.runs:
+                    run.text = ""
+                paragraph.runs[0].text = new_text
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
