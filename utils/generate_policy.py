@@ -1,10 +1,9 @@
 # utils/generate_policy.py
 
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
 
 
 def generate_policy_docx(doc: Document, data: dict):
@@ -31,7 +30,7 @@ def generate_policy_docx(doc: Document, data: dict):
     else:
         replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", "没有选择该项目")
         replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", "")
-        replace_text_in_paragraphs(doc, "赔偿自己车辆最多 $XXX(自付额$250)", "")
+        replace_text_in_paragraphs(doc, "赔偿自己车辆最多$XXX(自付额$250)", "")
 
     # Medical Payment
     write_checkbox_and_amount(doc, "Medical Payment", data["medical_payment"]["selected"])
@@ -47,13 +46,11 @@ def generate_policy_docx(doc: Document, data: dict):
     else:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX", "没有选择该项目")
 
-
-    # 插入多辆车信息和保障表格
+    # 插入车辆保障表格
     insert_vehicle_section(doc, data.get("vehicles", []))
 
 
 def insert_vehicle_section(doc, vehicles):
-    from docx.shared import RGBColor
     from copy import deepcopy
 
     # 找到“车辆保障:”段落
@@ -69,44 +66,38 @@ def insert_vehicle_section(doc, vehicles):
 
     # 清理原有车辆表格和 VIN 信息
     next_el = marker.getnext()
-    while next_el is not None and next_el.tag.endswith("p") or next_el.tag.endswith("tbl"):
+    while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
         next_el = next_el.getnext()
         marker.getparent().remove(to_remove)
 
     doc_paragraph = doc.paragraphs[marker_idx]
 
-    for idx, vehicle in enumerate(vehicles):
+    for vehicle in vehicles:
         # 添加视觉空行
-        spacer = OxmlElement('w:p')
         spacer_p = doc_paragraph.insert_paragraph_before("·")
         spacer_p.runs[0].font.size = Pt(1)
         spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
 
-        # 添加车辆 VIN 段
+        # 添加 VIN 信息
         vin_para = doc_paragraph.insert_paragraph_before(f"{vehicle['model']}     VIN：{vehicle['vin']}")
         vin_para.runs[0].font.size = Pt(12)
         vin_para.runs[0].bold = True
 
-        # 插入新表格
+        # 添加表格
         table = doc.add_table(rows=5, cols=3)
         table.style = "Table Grid"
         table.autofit = False
         table.allow_autofit = False
 
         headers = ["保险项目", "是否选择", "保额 / 说明"]
-        rows = ["Collision", "Comprehensive", "Roadside Assistance", "Rental Reimbursement"]
-        chinese_rows = [
-            "碰撞险", "车子损毁险", "道路救援", "租车报销"
-        ]
+        chinese_rows = ["碰撞险", "车子损毁险", "道路救援", "租车报销"]
         for j, header in enumerate(headers):
             table.cell(0, j).text = header
         for i in range(4):
             table.cell(i + 1, 0).text = chinese_rows[i]
 
         fill_vehicle_table(table, vehicle)
-
-        # 插入表格后移动位置
         marker.addnext(table._element)
         marker = table._element
 
