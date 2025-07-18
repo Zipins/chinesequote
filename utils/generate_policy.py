@@ -1,9 +1,6 @@
-
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-import streamlit as st
 
 
 def generate_policy_docx(doc: Document, data: dict):
@@ -21,7 +18,7 @@ def generate_policy_docx(doc: Document, data: dict):
         replace_text_in_paragraphs(doc, "赔偿对方医疗费总额最高$XXX", "")
         replace_text_in_paragraphs(doc, "赔偿对方车辆和财产损失最多$XXXX", "")
 
-    # Uninsured Motorist
+    # 无保险驾驶者
     write_checkbox_and_amount(doc, "Uninsured Motorist", data["uninsured_motorist"]["selected"])
     if data["uninsured_motorist"]["selected"]:
         replace_text_in_paragraphs(doc, "赔偿你和乘客医疗费$XXXX/人", f"赔偿你和乘客医疗费{data['uninsured_motorist']['bi_per_person']}/人")
@@ -32,28 +29,31 @@ def generate_policy_docx(doc: Document, data: dict):
         replace_text_in_paragraphs(doc, "一场事故最多赔偿医疗费$XXXX", "")
         replace_text_in_paragraphs(doc, "赔偿自己车辆最多$XXX(自付额$250)", "")
 
-    # Medical Payment
+    # 医疗费用
     write_checkbox_and_amount(doc, "Medical Payment", data["medical_payment"]["selected"])
     if data["medical_payment"]["selected"]:
-        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX", f"赔偿自己和自己车上乘客在事故中受伤的医疗费每人{data['medical_payment']['med']}")
+        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX",
+                                   f"赔偿自己和自己车上乘客在事故中受伤的医疗费每人{data['medical_payment']['med']}")
     else:
         replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX", "没有选择该项目")
 
-    # Personal Injury
+    # 人身损失保护
     write_checkbox_and_amount(doc, "Personal Injury", data["personal_injury"]["selected"])
     if data["personal_injury"]["selected"]:
-        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX", f"赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人{data['personal_injury']['pip']}")
+        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX",
+                                   f"赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人{data['personal_injury']['pip']}")
     else:
-        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX", "没有选择该项目")
+        replace_text_in_paragraphs(doc, "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX",
+                                   "没有选择该项目")
 
-    # 插入车辆保障表格
+    # 插入车辆保障
     insert_vehicle_section(doc, data.get("vehicles", []))
-    print_all_paragraphs_with_dollar(doc)
 
 
 def insert_vehicle_section(doc, vehicles):
     from copy import deepcopy
 
+    # 找到“车辆保障:”段落
     marker_idx = -1
     for i, p in enumerate(doc.paragraphs):
         if "车辆保障:" in p.text:
@@ -64,6 +64,7 @@ def insert_vehicle_section(doc, vehicles):
 
     marker = doc.paragraphs[marker_idx]._element
 
+    # 清理旧内容
     next_el = marker.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
@@ -73,14 +74,17 @@ def insert_vehicle_section(doc, vehicles):
     doc_paragraph = doc.paragraphs[marker_idx]
 
     for vehicle in vehicles:
+        # 空行
         spacer_p = doc_paragraph.insert_paragraph_before("·")
         spacer_p.runs[0].font.size = Pt(1)
         spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
 
+        # VIN 段
         vin_para = doc_paragraph.insert_paragraph_before(f"{vehicle['model']}     VIN：{vehicle['vin']}")
         vin_para.runs[0].font.size = Pt(12)
         vin_para.runs[0].bold = True
 
+        # 表格
         table = doc.add_table(rows=5, cols=3)
         table.style = "Table Grid"
         table.autofit = False
@@ -105,14 +109,16 @@ def fill_vehicle_table(table, vehicle):
     update_checkbox_cell(table.cell(4, 1), vehicle["rental"]["selected"])
 
     if vehicle["collision"]["selected"]:
-        table.cell(1, 2).text = f"自付额${vehicle['collision']['deductible']}
-修车时自付额以内自己出，自付额以外的保险公司赔付"
+        table.cell(1, 2).text = (
+            f"自付额${vehicle['collision']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
+        )
     else:
         table.cell(1, 2).text = "没有选择该项目"
 
     if vehicle["comprehensive"]["selected"]:
-        table.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}
-修车时自付额以内自己出，自付额以外的保险公司赔付"
+        table.cell(2, 2).text = (
+            f"自付额${vehicle['comprehensive']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
+        )
     else:
         table.cell(2, 2).text = "没有选择该项目"
 
@@ -142,13 +148,9 @@ def replace_placeholder_text(doc, placeholder, replacement):
 
 def replace_text_in_paragraphs(doc, old, new):
     for paragraph in doc.paragraphs:
-        if old in paragraph.text:
-            full_text = "".join(run.text for run in paragraph.runs)
-            if old in full_text:
-                new_text = full_text.replace(old, new)
-                for run in paragraph.runs:
-                    run.text = ""
-                paragraph.runs[0].text = new_text
+        for run in paragraph.runs:
+            if old in run.text:
+                run.text = run.text.replace(old, new)
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
@@ -161,10 +163,3 @@ def write_checkbox_and_amount(doc, keyword, selected):
                 cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = cell.paragraphs[0].runs[0]
                 run.font.size = Pt(16)
-
-
-def print_all_paragraphs_with_dollar(doc):
-    st.subheader("🔍 模板中包含金额字段（$）的段落")
-    for i, para in enumerate(doc.paragraphs):
-        if "$" in para.text or "￥" in para.text:
-            st.markdown(f"**段落 {i+1}:** `{para.text.strip()}`")
