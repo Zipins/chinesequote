@@ -18,9 +18,9 @@ def generate_policy_docx(doc: Document, data: dict):
         replace_text_in_paragraphs(doc, "赔偿对方医疗费总额最高$XXX", f"赔偿对方医疗费总额最高{data['liability']['bi_per_accident']}")
         replace_text_in_paragraphs(doc, "赔偿对方车辆和财产损失最多$XXXX", f"赔偿对方车辆和财产损失最多{data['liability']['pd']}")
     else:
-        replace_text_in_paragraphs(doc, "赔偿对方医疗费最高 $XXXX/人", "没有选择该项目")
+        replace_text_in_paragraphs(doc, "赔偿对方医疗费最高$XXXX/人", "没有选择该项目")
         replace_text_in_paragraphs(doc, "赔偿对方医疗费总额最高$XXX", "")
-        replace_text_in_paragraphs(doc, "赔偿对方车辆 $XXXX", "")
+        replace_text_in_paragraphs(doc, "赔偿对方车辆和财产损失最多$XXXX", "")
 
     # Uninsured Motorist
     write_checkbox_and_amount(doc, "Uninsured Motorist", data["uninsured_motorist"]["selected"])
