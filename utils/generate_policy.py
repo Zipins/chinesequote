@@ -146,8 +146,9 @@ def replace_placeholder_text(doc, placeholder, replacement):
 
 def replace_text_in_paragraphs(doc, old, new):
     for paragraph in doc.paragraphs:
-        if old in paragraph.text:
-            paragraph.text = paragraph.text.replace(old, new)
+        for run in paragraph.runs:
+            if old in run.text:
+                run.text = run.text.replace(old, new)
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
