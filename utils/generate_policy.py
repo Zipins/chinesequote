@@ -140,14 +140,15 @@ def replace_placeholder_text(doc, placeholder, replacement):
 
 
 def replace_text_in_paragraphs(doc, old, new):
-    for para in doc.paragraphs:
-        full_text = ''.join(run.text for run in para.runs)
+    for paragraph in doc.paragraphs:
+        full_text = "".join(run.text for run in paragraph.runs)
         if old in full_text:
-            new_text = full_text.replace(old, new)
-            for run in para.runs:
-                run.text = ''
-            if para.runs:
-                para.runs[0].text = new_text
+            new_full_text = full_text.replace(old, new)
+            # 清空现有 runs
+            for run in paragraph.runs:
+                run.text = ""
+            # 只用一个 run 写入新内容
+            paragraph.runs[0].text = new_full_text
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
