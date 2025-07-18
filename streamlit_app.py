@@ -1,49 +1,43 @@
 import streamlit as st
-import tempfile
-import os
 from docx import Document
-from utils.parse_quote import parse_quote_from_file
+import tempfile
+from utils.parse_quote import extract_quote_data
 from utils.generate_policy import generate_policy_docx
+import os
 
-st.set_page_config(page_title="中文保单生成器", layout="wide")
+TEMPLATE_PATH = "template/保单范例.docx"
 
-st.title("📄 中文车险保单生成器")
+st.set_page_config(page_title="中文保单生成器", layout="centered")
 
-uploaded_file = st.file_uploader("请上传保险报价单（支持 PDF 或图片）", type=["pdf", "jpg", "jpeg", "png"])
+st.title("📄 中文保单生成器")
+st.markdown("上传保险报价 PDF 或图片，系统将自动生成中文保单解释文档。")
+
+uploaded_file = st.file_uploader("请上传报价文件（PDF / JPG / PNG）", type=["pdf", "jpg", "jpeg", "png"])
 
 if uploaded_file:
-    try:
-        with st.spinner("正在识别保单内容，请稍候..."):
-            # 临时保存上传文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp:
-                tmp.write(uploaded_file.read())
-                tmp_path = tmp.name
+    with st.spinner("正在识别报价内容，请稍候..."):
+        try:
+            # 从 Textract 提取数据
+            data, ocr_text = extract_quote_data(uploaded_file, return_raw_text=True)
 
-            # 提取 quote 信息
-            data, full_text = parse_quote_from_file(tmp_path)
+            # 打开模板文档
+            template_doc = Document(TEMPLATE_PATH)
 
-            # 展示 OCR 提取内容（调试用）
-            with st.expander("📑 提取字段结构（结构化数据）", expanded=False):
-                st.code(data, language="json")
-            with st.expander("📄 原始 OCR 文本", expanded=False):
-                st.text(full_text[:8000])  # 限制最大展示长度
+            # 调用保单生成逻辑
+            generate_policy_docx(template_doc, data)
 
-            # 用户自定义输出文件名
-            default_filename = "中文保单_客户名.docx"
-            filename = st.text_input("输出文件名", value=default_filename)
+            # 保存为临时文件供下载
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+                output_path = tmp.name
+                template_doc.save(output_path)
 
-            # 生成保单按钮
-            if st.button("📃 生成中文保单"):
-                with st.spinner("正在生成 Word 保单..."):
-                    doc = Document("template/保单范例.docx")
-                    generate_policy_docx(doc, data)
+            # 显示短信摘要（可选）
+            st.success("✅ 保单生成成功！")
+            st.download_button("📥 下载生成的中文保单", data=open(output_path, "rb"), file_name="中文保单.docx")
 
-                    # 保存为临时文件供下载
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as out_file:
-                        doc.save(out_file.name)
-                        st.success("✅ 保单生成成功！")
-                        with open(out_file.name, "rb") as f:
-                            st.download_button("📥 下载保单", data=f, file_name=filename, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            # 可以加一个调试用文本区查看 OCR 文本
+            with st.expander("🧾 OCR原始文本（调试用）"):
+                st.text(ocr_text)
 
-    except Exception as e:
-        st.error(f"❌ 出错了：{e}")
+        except Exception as e:
+            st.error(f"❌ 出错了：{e}")
