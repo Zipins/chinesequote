@@ -38,6 +38,7 @@ if uploaded_file:
             # 可以加一个调试用文本区查看 OCR 文本
             with st.expander("🧾 OCR原始文本（调试用）"):
                 st.text(ocr_text)
-
+        st.subheader("📋 提取字段预览")
+        st.json(data)  # 这会在页面中展示 data 字典，方便你检查字段有没有值
         except Exception as e:
             st.error(f"❌ 出错了：{e}")
