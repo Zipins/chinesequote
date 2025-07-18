@@ -1,8 +1,7 @@
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-import streamlit as st  # 用于在页面展示模板中金额字段
+import streamlit as st  # 用于调试输出金额字段
 
 
 def generate_policy_docx(doc: Document, data: dict):
@@ -48,14 +47,13 @@ def generate_policy_docx(doc: Document, data: dict):
     # 插入车辆保障表格
     insert_vehicle_section(doc, data.get("vehicles", []))
 
-    # 调试用：展示所有包含金额的段落
+    # 调试用：在 Streamlit 页面上展示所有包含金额字段的段落
     print_all_paragraphs_with_dollar(doc)
 
 
 def insert_vehicle_section(doc, vehicles):
     from copy import deepcopy
 
-    # 找到“车辆保障:”段落
     marker_idx = -1
     for i, p in enumerate(doc.paragraphs):
         if "车辆保障:" in p.text:
@@ -66,7 +64,7 @@ def insert_vehicle_section(doc, vehicles):
 
     marker = doc.paragraphs[marker_idx]._element
 
-    # 清理原有车辆表格和 VIN 信息
+    # 清除原有表格和 VIN 信息
     next_el = marker.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
@@ -76,17 +74,14 @@ def insert_vehicle_section(doc, vehicles):
     doc_paragraph = doc.paragraphs[marker_idx]
 
     for vehicle in vehicles:
-        # 添加视觉空行
         spacer_p = doc_paragraph.insert_paragraph_before("·")
         spacer_p.runs[0].font.size = Pt(1)
         spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
 
-        # 添加 VIN 信息
         vin_para = doc_paragraph.insert_paragraph_before(f"{vehicle['model']}     VIN：{vehicle['vin']}")
         vin_para.runs[0].font.size = Pt(12)
         vin_para.runs[0].bold = True
 
-        # 添加表格
         table = doc.add_table(rows=5, cols=3)
         table.style = "Table Grid"
         table.autofit = False
@@ -145,10 +140,14 @@ def replace_placeholder_text(doc, placeholder, replacement):
 
 
 def replace_text_in_paragraphs(doc, old, new):
-    for paragraph in doc.paragraphs:
-        for run in paragraph.runs:
-            if old in run.text:
-                run.text = run.text.replace(old, new)
+    for para in doc.paragraphs:
+        full_text = ''.join(run.text for run in para.runs)
+        if old in full_text:
+            new_text = full_text.replace(old, new)
+            for run in para.runs:
+                run.text = ''
+            if para.runs:
+                para.runs[0].text = new_text
 
 
 def write_checkbox_and_amount(doc, keyword, selected):
