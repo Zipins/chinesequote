@@ -135,30 +135,20 @@ def extract_liability(text):
 def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
-    for i, line in enumerate(lines):
-        lower_line = line.lower()
-        if ("uninsured" in lower_line or "uninsd" in lower_line):
-            # 判断当前行是否有人身伤害金额
-            match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", line)
-            if match:
-                result["bi_per_person"] = f"${match.group(1)}"
-                result["bi_per_accident"] = f"${match.group(2)}"
+    for i in range(len(lines) - 2):
+        block = lines[i:i+3]
+        block_text = " ".join(block).lower()
+        if "uninsd" in block_text or "uninsured" in block_text:
+            slash_match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", block_text)
+            if slash_match:
+                result["bi_per_person"] = f"${slash_match.group(1)}"
+                result["bi_per_accident"] = f"${slash_match.group(2)}"
                 result["selected"] = True
-            # 如果没有，在下一行找金额
-            elif i + 1 < len(lines):
-                next_line = lines[i + 1]
-                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", next_line)
-                if match:
-                    result["bi_per_person"] = f"${match.group(1)}"
-                    result["bi_per_accident"] = f"${match.group(2)}"
-                    result["selected"] = True
-        # 判断 UMPD
-        if ("uninsured" in lower_line or "uninsd" in lower_line) and "pd" in lower_line:
-            for j in range(i, min(i+2, len(lines))):
-                pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
-                if pd_match:
-                    result["pd"] = f"${pd_match.group(1)}"
-                    result["selected"] = True
+        if "motorists pd" in block_text:
+            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", block_text)
+            if pd_match:
+                result["pd"] = f"${pd_match.group(1)}"
+                result["selected"] = True
     return result
 
 def extract_medical_payment(text):
