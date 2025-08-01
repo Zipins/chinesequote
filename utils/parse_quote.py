@@ -144,19 +144,21 @@ def extract_uninsured_motorist(text):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if "uninsd" in line.lower() and "pd" not in line.lower():
-            for j in range(i - 3, i):
-                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
-                if match:
-                    result["bi_per_person"] = f"${match.group(1)}"
-                    result["bi_per_accident"] = f"${match.group(2)}"
-                    result["selected"] = True
+            for j in range(i - 3, i + 4):
+                if 0 <= j < len(lines):
+                    match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
+                    if match:
+                        result["bi_per_person"] = f"${match.group(1)}"
+                        result["bi_per_accident"] = f"${match.group(2)}"
+                        result["selected"] = True
         if "uninsd" in line.lower() and "pd" in line.lower():
             for j in range(i - 3, i + 3):
-                match = re.search(r"(\d{1,3}[,\d]*)", lines[j])
-                if match:
-                    result["pd"] = f"${match.group(1)}"
-                    result["selected"] = True
-                    break
+                if 0 <= j < len(lines):
+                    match = re.search(r"(\d{1,3}[,\d]*)", lines[j])
+                    if match:
+                        result["pd"] = f"${match.group(1)}"
+                        result["selected"] = True
+                        break
     return result
 
 def extract_medical_payment(text):
@@ -193,32 +195,66 @@ def extract_vehicles(text):
             vehicle = {
                 "model": model.strip(),
                 "vin": vin.strip(),
-                "collision": extract_deductible_from_above(block_text, "Collision"),
-                "comprehensive": extract_deductible_from_above(block_text, "Comprehensive"),
-                "rental": extract_presence_from_above(block_text, "Rental"),
-                "roadside": extract_presence_from_above(block_text, "Roadside Assistance")
+                "collision": extract_deductible_bidirectional(block_text, "Collision"),
+                "comprehensive": extract_deductible_bidirectional(block_text, "Comprehensive"),
+                "rental": extract_limit_bidirectional(block_text, "Rental"),
+                "roadside": extract_presence_bidirectional(block_text, "Roadside Assistance")
             }
             vehicles.append(vehicle)
     return vehicles
 
-def extract_deductible_from_above(text, keyword):
+def extract_deductible_bidirectional(text, keyword):
     result = {"selected": False, "deductible": ""}
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
             for j in range(i - 3, i):
-                match = re.search(r"(\d{2,5})", lines[j])
-                if match:
-                    result["selected"] = True
-                    result["deductible"] = match.group(1)
-                    return result
+                if 0 <= j < len(lines):
+                    match = re.search(r"(\d{2,5})", lines[j])
+                    if match:
+                        result["selected"] = True
+                        result["deductible"] = match.group(1)
+                        return result
+            for j in range(i + 1, i + 4):
+                if 0 <= j < len(lines):
+                    match = re.search(r"(\d{2,5})", lines[j])
+                    if match:
+                        result["selected"] = True
+                        result["deductible"] = match.group(1)
+                        return result
     return result
 
-def extract_presence_from_above(text, keyword):
+def extract_limit_bidirectional(text, keyword):
+    result = {"selected": False, "limit": ""}
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
             for j in range(i - 3, i):
-                if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
-                    return {"selected": True}
+                if 0 <= j < len(lines):
+                    match = re.search(r"\d{1,3}/\d{1,4}", lines[j])
+                    if match:
+                        result["selected"] = True
+                        result["limit"] = match.group(0)
+                        return result
+            for j in range(i + 1, i + 4):
+                if 0 <= j < len(lines):
+                    match = re.search(r"\d{1,3}/\d{1,4}", lines[j])
+                    if match:
+                        result["selected"] = True
+                        result["limit"] = match.group(0)
+                        return result
+    return result
+
+def extract_presence_bidirectional(text, keyword):
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if keyword.lower() in line.lower():
+            for j in range(i - 3, i):
+                if 0 <= j < len(lines):
+                    if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
+                        return {"selected": True}
+            for j in range(i + 1, i + 4):
+                if 0 <= j < len(lines):
+                    if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
+                        return {"selected": True}
     return {"selected": False}
