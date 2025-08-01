@@ -143,10 +143,11 @@ def extract_uninsured_motorist(text):
                 result["bi_per_accident"] = f"${match.group(2)}"
                 result["selected"] = True
         if "unins" in line.lower() and "pd" in line.lower():
-            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
-            if pd_match:
-                result["pd"] = f"${pd_match.group(1)}"
-                result["selected"] = True
+            for j in range(i, min(i+2, len(lines))):
+                pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
+                if pd_match:
+                    result["pd"] = f"${pd_match.group(1)}"
+                    result["selected"] = True
     return result
 
 def extract_medical_payment(text):
@@ -194,20 +195,21 @@ def extract_vehicles(text):
 def extract_deductible_multi(text, keyword):
     result = {"selected": False, "deductible": ""}
     lines = text.splitlines()
-    for line in lines:
+    for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            match = re.search(rf"{keyword}[^\d]*?(\d{{1,4}})", line, re.IGNORECASE)
-            if match:
-                result["selected"] = True
-                result["deductible"] = match.group(1)
-                break
+            for j in range(i, min(i+2, len(lines))):
+                match = re.search(r"(\d{2,5})", lines[j])
+                if match:
+                    result["selected"] = True
+                    result["deductible"] = match.group(1)
+                    return result
     return result
 
 def extract_presence_multi(text, keyword):
     lines = text.splitlines()
-    for line in lines:
+    for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            if re.search(r"\$?\d{1,4}(\.\d{2})?", line):
-                return {"selected": True}
+            for j in range(i, min(i+2, len(lines))):
+                if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
+                    return {"selected": True}
     return {"selected": False}
-
