@@ -134,15 +134,24 @@ def extract_liability(text):
 
 def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
-    bi_match = re.search(r"Unins.*?Motorists\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text, re.IGNORECASE)
-    pd_match = re.search(r"Unins.*?Motorists PD\s+(\d{1,3}[,\d]*)", text, re.IGNORECASE)
-    if bi_match:
-        result["bi_per_person"] = f"${bi_match.group(1)}"
-        result["bi_per_accident"] = f"${bi_match.group(2)}"
-        result["selected"] = True
-    if pd_match:
-        result["pd"] = f"${pd_match.group(1)}"
-        result["selected"] = True
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "Unins" in line and "Motorists" in line:
+            if i + 1 < len(lines):
+                next_line = lines[i + 1]
+                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", next_line)
+                if match:
+                    result["bi_per_person"] = f"${match.group(1)}"
+                    result["bi_per_accident"] = f"${match.group(2)}"
+                    result["selected"] = True
+        if "Unins" in line and "Motorists PD" in line:
+            for j in range(i, i+3):
+                if j < len(lines):
+                    m = re.search(r"(\d{1,3}[,\d]*)", lines[j])
+                    if m:
+                        result["pd"] = f"${m.group(1)}"
+                        result["selected"] = True
+                        break
     return result
 
 def extract_medical_payment(text):
@@ -193,8 +202,8 @@ def extract_deductible(text, keyword):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            for j in range(i, min(i+3, len(lines))):
-                match = re.search(r"(\d{1,3}[,\d]*)\s+\$\d", lines[j])
+            for j in range(i, min(i+4, len(lines))):
+                match = re.search(r"(\d{1,3}[,\d]*)", lines[j])
                 if match:
                     result["selected"] = True
                     result["deductible"] = match.group(1)
@@ -203,8 +212,9 @@ def extract_deductible(text, keyword):
 
 def extract_presence(text, keyword):
     lines = text.splitlines()
-    for line in lines:
+    for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            if re.search(r"\$?\d{1,3}(,\d{3})*(\.\d{2})?", line):
-                return {"selected": True}
+            for j in range(i, min(i+2, len(lines))):
+                if re.search(r"\$?\d{1,3}(,\d{3})*(\.\d{2})?", lines[j]):
+                    return {"selected": True}
     return {"selected": False}
