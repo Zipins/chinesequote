@@ -4,8 +4,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from copy import deepcopy
 
 def generate_policy_docx(doc: Document, data: dict):
-    # 替换公司名与价格信息
-    replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
+    # 替换价格信息
     price_info = f"{data.get('total_premium', '$XXX')}/{data.get('policy_term', '6个月')}，一次性付款"
     replace_placeholder_text(doc, "{{PRICE_INFO}}", price_info)
 
@@ -58,8 +57,9 @@ def clear_uninsured_section(doc):
 
 def replace_placeholder_text(doc, placeholder, replacement):
     for paragraph in doc.paragraphs:
-        if placeholder in paragraph.text:
-            paragraph.text = paragraph.text.replace(placeholder, replacement)
+        for run in paragraph.runs:
+            if placeholder in run.text:
+                run.text = run.text.replace(placeholder, replacement)
 
 def write_checkbox_and_amount(doc, keyword, selected):
     symbol = "✅" if selected else "❌"
