@@ -1,4 +1,3 @@
-replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -8,6 +7,7 @@ def generate_policy_docx(doc: Document, data: dict):
     # 替换价格信息
     price_info = f"{data.get('total_premium', '$XXX')}/{data.get('policy_term', '6个月')}，一次性付款"
     replace_placeholder_text(doc, "{{PRICE_INFO}}", price_info)
+    replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
 
     # 责任险
     write_checkbox_and_amount(doc, "Liability", data["liability"]["selected"])
