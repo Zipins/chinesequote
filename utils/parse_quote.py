@@ -136,13 +136,13 @@ def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if "unins" in line.lower() and "/" in line:
+        if ("uninsured" in line.lower() or "uninsd" in line.lower()) and "/" in line:
             match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", line)
             if match:
                 result["bi_per_person"] = f"${match.group(1)}"
                 result["bi_per_accident"] = f"${match.group(2)}"
                 result["selected"] = True
-        if "unins" in line.lower() and "pd" in line.lower():
+        if ("uninsured" in line.lower() or "uninsd" in line.lower()) and "pd" in line.lower():
             for j in range(i, min(i+2, len(lines))):
                 pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
                 if pd_match:
