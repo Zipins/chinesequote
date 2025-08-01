@@ -1,3 +1,4 @@
+replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
