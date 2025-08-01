@@ -140,31 +140,36 @@ def extract_uninsured_motorist(text):
         "pd": "",
         "deductible": "250"
     }
+
     lines = text.splitlines()
     for i, line in enumerate(lines):
         line_lc = line.lower()
+
+        # 找 UMBI
         if "uninsd" in line_lc or "uninsured" in line_lc:
             if "pd" not in line_lc:
-                if i > 0:
-                    match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[i - 1])
+                # 往上找 / 格式额度
+                for offset in [-2, -1, 1, 2]:
+                    j = i + offset
+                    if 0 <= j < len(lines):
+                        match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
+                        if match:
+                            result["bi_per_person"] = f"${match.group(1)}"
+                            result["bi_per_accident"] = f"${match.group(2)}"
+                            result["selected"] = True
+                            break
+
+        # 找 UMPD
+        if ("uninsd" in line_lc or "uninsured" in line_lc) and "pd" in line_lc:
+            for offset in [-2, -1, 1, 2]:
+                j = i + offset
+                if 0 <= j < len(lines):
+                    match = re.search(r"\$?(\d{1,4}(,\d{3})*)", lines[j])
                     if match:
-                        result["bi_per_person"] = f"${match.group(1)}"
-                        result["bi_per_accident"] = f"${match.group(2)}"
+                        result["pd"] = f"${match.group(1)}"
                         result["selected"] = True
-                        continue
-                if i + 1 < len(lines):
-                    match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[i + 1])
-                    if match:
-                        result["bi_per_person"] = f"${match.group(1)}"
-                        result["bi_per_accident"] = f"${match.group(2)}"
-                        result["selected"] = True
-                        continue
-        if "uninsd" in line_lc and "pd" in line_lc:
-            if i > 0:
-                match = re.search(r"(\d{1,3}[,\d]*)", lines[i - 1])
-                if match:
-                    result["pd"] = f"${match.group(1)}"
-                    result["selected"] = True
+                        break
+
     return result
 
 def extract_medical_payment(text):
