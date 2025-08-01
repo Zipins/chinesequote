@@ -136,21 +136,17 @@ def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if "Unins" in line and "Motorists" in line and "PD" not in line:
-            for j in range(i, min(i+3, len(lines))):
-                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
-                if match:
-                    result["bi_per_person"] = f"${match.group(1)}"
-                    result["bi_per_accident"] = f"${match.group(2)}"
-                    result["selected"] = True
-        if "Unins" in line and "Motorists PD" in line:
-            for j in range(i, i+3):
-                if j < len(lines):
-                    m = re.search(r"(\d{1,3}[,\d]*)", lines[j])
-                    if m:
-                        result["pd"] = f"${m.group(1)}"
-                        result["selected"] = True
-                        break
+        if "unins" in line.lower() and "/" in line and "pd" not in line.lower():
+            match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", line)
+            if match:
+                result["bi_per_person"] = f"${match.group(1)}"
+                result["bi_per_accident"] = f"${match.group(2)}"
+                result["selected"] = True
+        if "unins" in line.lower() and "pd" in line.lower():
+            match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
+            if match:
+                result["pd"] = f"${match.group(1)}"
+                result["selected"] = True
     return result
 
 def extract_medical_payment(text):
@@ -177,46 +173,38 @@ def extract_vehicles(text):
         vin_match = vin_pattern.search(line)
         if vin_match:
             vin = vin_match.group(2)
+            model = "未知车型"
             for j in range(i-1, max(i-5, -1), -1):
                 model_line = lines[j].strip()
                 if re.match(r"\d{4}\s+[A-Z0-9 ]{3,}", model_line):
                     model = model_line
                     break
-            else:
-                model = "未知车型"
             block_text = "\n".join(lines[max(i-5, 0):i+10])
             vehicle = {
                 "model": model.strip(),
                 "vin": vin.strip(),
-                "collision": extract_deductible(block_text, "Collision"),
-                "comprehensive": extract_deductible(block_text, "Comprehensive"),
-                "rental": extract_presence(block_text, "Rental", True),
-                "roadside": extract_presence(block_text, "Roadside Assistance", True)
+                "collision": extract_deductible_same_line(block_text, "Collision"),
+                "comprehensive": extract_deductible_same_line(block_text, "Comprehensive"),
+                "rental": extract_presence_strict(block_text, "Rental"),
+                "roadside": extract_presence_strict(block_text, "Roadside Assistance")
             }
             vehicles.append(vehicle)
     return vehicles
 
-def extract_deductible(text, keyword):
+def extract_deductible_same_line(text, keyword):
     result = {"selected": False, "deductible": ""}
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
+    for line in text.splitlines():
         if keyword.lower() in line.lower():
-            for j in range(i, min(i+4, len(lines))):
-                match = re.search(r"(\d{1,3}[,\d]*)", lines[j])
-                if match:
-                    result["selected"] = True
-                    result["deductible"] = match.group(1)
-                    return result
+            match = re.search(rf"{keyword}[^\d]*(\d{{1,4}})", line, re.IGNORECASE)
+            if match:
+                result["selected"] = True
+                result["deductible"] = match.group(1)
+                return result
     return result
 
-def extract_presence(text, keyword, check_amount=False):
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
+def extract_presence_strict(text, keyword):
+    for line in text.splitlines():
         if keyword.lower() in line.lower():
-            if check_amount:
-                for j in range(i, min(i+3, len(lines))):
-                    if re.search(r"\$?\d{1,3}(,\d{3})*(\.\d{2})?", lines[j]):
-                        return {"selected": True}
-            else:
+            if re.search(r"\$?\d{1,4}(\.\d{2})?", line):
                 return {"selected": True}
     return {"selected": False}
