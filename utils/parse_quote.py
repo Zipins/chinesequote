@@ -115,7 +115,7 @@ def extract_liability(text):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if "liability" in line.lower():
-            for j in range(i + 1, min(i + 5, len(lines))):
+            for j in range(i - 3, i):
                 match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
                 if match:
                     result["bi_per_person"] = f"${match.group(1)}"
@@ -124,12 +124,13 @@ def extract_liability(text):
                     break
     for i, line in enumerate(lines):
         if "property damage" in line.lower():
-            for j in range(i, min(i+3, len(lines))):
-                pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
-                if pd_match:
-                    result["pd"] = f"${pd_match.group(1)}"
-                    result["selected"] = True
-                    break
+            for j in range(i - 3, i + 3):
+                if 0 <= j < len(lines):
+                    pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
+                    if pd_match:
+                        result["pd"] = f"${pd_match.group(1)}"
+                        result["selected"] = True
+                        break
     return result
 
 def extract_uninsured_motorist(text):
@@ -142,22 +143,20 @@ def extract_uninsured_motorist(text):
     }
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        line_lc = line.lower()
-        if ("uninsd" in line_lc or "uninsured" in line_lc) and "pd" not in line_lc:
-            for offset in [-2, -1, 1, 2]:
-                if 0 <= i + offset < len(lines):
-                    match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[i + offset])
-                    if match:
-                        result["bi_per_person"] = f"${match.group(1)}"
-                        result["bi_per_accident"] = f"${match.group(2)}"
-                        result["selected"] = True
-        if ("uninsd" in line_lc and "pd" in line_lc):
-            for offset in [-2, -1, 1, 2]:
-                if 0 <= i + offset < len(lines):
-                    match = re.search(r"(\d{1,3}[,\d]*)", lines[i + offset])
-                    if match:
-                        result["pd"] = f"${match.group(1)}"
-                        result["selected"] = True
+        if "uninsd" in line.lower() and "pd" not in line.lower():
+            for j in range(i - 3, i):
+                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
+                if match:
+                    result["bi_per_person"] = f"${match.group(1)}"
+                    result["bi_per_accident"] = f"${match.group(2)}"
+                    result["selected"] = True
+        if "uninsd" in line.lower() and "pd" in line.lower():
+            for j in range(i - 3, i + 3):
+                match = re.search(r"(\d{1,3}[,\d]*)", lines[j])
+                if match:
+                    result["pd"] = f"${match.group(1)}"
+                    result["selected"] = True
+                    break
     return result
 
 def extract_medical_payment(text):
@@ -190,38 +189,36 @@ def extract_vehicles(text):
                 if re.match(r"\d{4}\s+[A-Z0-9 ]{3,}", model_line):
                     model = model_line
                     break
-            block_text = "\n".join(lines[max(i-15, 0):i+15])
+            block_text = "\n".join(lines[max(i-20, 0):i+20])
             vehicle = {
                 "model": model.strip(),
                 "vin": vin.strip(),
-                "collision": extract_deductible_multi(block_text, "Collision"),
-                "comprehensive": extract_deductible_multi(block_text, "Comprehensive"),
-                "rental": extract_presence_multi(block_text, "Rental"),
-                "roadside": extract_presence_multi(block_text, "Roadside Assistance")
+                "collision": extract_deductible_from_above(block_text, "Collision"),
+                "comprehensive": extract_deductible_from_above(block_text, "Comprehensive"),
+                "rental": extract_presence_from_above(block_text, "Rental"),
+                "roadside": extract_presence_from_above(block_text, "Roadside Assistance")
             }
             vehicles.append(vehicle)
     return vehicles
 
-def extract_deductible_multi(text, keyword):
+def extract_deductible_from_above(text, keyword):
     result = {"selected": False, "deductible": ""}
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            for j in range(i-2, i+3):
-                if 0 <= j < len(lines):
-                    match = re.search(r"(\d{2,5})", lines[j])
-                    if match:
-                        result["selected"] = True
-                        result["deductible"] = match.group(1)
-                        return result
+            for j in range(i - 3, i):
+                match = re.search(r"(\d{2,5})", lines[j])
+                if match:
+                    result["selected"] = True
+                    result["deductible"] = match.group(1)
+                    return result
     return result
 
-def extract_presence_multi(text, keyword):
+def extract_presence_from_above(text, keyword):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            for j in range(i-2, i+3):
-                if 0 <= j < len(lines):
-                    if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
-                        return {"selected": True}
+            for j in range(i - 3, i):
+                if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
+                    return {"selected": True}
     return {"selected": False}
