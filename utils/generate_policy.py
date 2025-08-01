@@ -165,3 +165,4 @@ def update_checkbox_cell(cell, selected):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.runs[0]
     run.font.size = Pt(16)
+ 
