@@ -9,34 +9,34 @@ def generate_policy_docx(doc, data):
     # 责任险 Liability
     write_checkbox_and_amount(doc, "Liability", data["liability"]["selected"])
     if data["liability"]["selected"]:
-        replace_full_paragraph(doc, "赔偿对方医疗费最高$XXXX/人", f"赔偿对方医疗费最高{data['liability']['bi_per_person']}/人")
-        replace_full_paragraph(doc, "赔偿对方医疗费总额最高$XXX", f"赔偿对方医疗费总额最高{data['liability']['bi_per_accident']}")
-        replace_full_paragraph(doc, "赔偿对方车辆和财产损失最多$XXXX", f"赔偿对方车辆和财产损失最多{data['liability']['pd']}")
+        replace_all_text(doc, "赔偿对方医疗费最高$XXXX/人", f"赔偿对方医疗费最高{data['liability']['bi_per_person']}/人")
+        replace_all_text(doc, "赔偿对方医疗费总额最高$XXX", f"赔偿对方医疗费总额最高{data['liability']['bi_per_accident']}")
+        replace_all_text(doc, "赔偿对方车辆和财产损失最多$XXXX", f"赔偿对方车辆和财产损失最多{data['liability']['pd']}")
     else:
-        replace_full_paragraph(doc, "赔偿对方医疗费最高$XXXX/人", "没有选择该项目")
-        replace_full_paragraph(doc, "赔偿对方医疗费总额最高$XXX", "")
-        replace_full_paragraph(doc, "赔偿对方车辆和财产损失最多$XXXX", "")
+        replace_all_text(doc, "赔偿对方医疗费最高$XXXX/人", "没有选择该项目")
+        replace_all_text(doc, "赔偿对方医疗费总额最高$XXX", "")
+        replace_all_text(doc, "赔偿对方车辆和财产损失最多$XXXX", "")
 
     # 无保险驾驶者 Uninsured Motorist
     write_checkbox_and_amount(doc, "Uninsured Motorist", data["uninsured_motorist"]["selected"])
     if data["uninsured_motorist"]["selected"]:
-        replace_full_paragraph(doc, "赔偿你和乘客医疗费$XXXX/人", f"赔偿你和乘客医疗费{data['uninsured_motorist']['bi_per_person']}/人")
-        replace_full_paragraph(doc, "一场事故最多赔偿医疗费$XXXX", f"一场事故最多赔偿医疗费{data['uninsured_motorist']['bi_per_accident']}")
-        replace_full_paragraph(doc, "赔偿自己车辆最多$XXX(自付额$250)", f"赔偿自己车辆最多{data['uninsured_motorist']['pd']}(自付额$250)")
+        replace_all_text(doc, "赔偿你和乘客医疗费$XXXX/人", f"赔偿你和乘客医疗费{data['uninsured_motorist']['bi_per_person']}/人")
+        replace_all_text(doc, "一场事故最多赔偿医疗费$XXXX", f"一场事故最多赔偿医疗费{data['uninsured_motorist']['bi_per_accident']}")
+        replace_all_text(doc, "赔偿自己车辆最多$XXX(自付额$250)", f"赔偿自己车辆最多{data['uninsured_motorist']['pd']}(自付额$250)")
     else:
-        replace_full_paragraph(doc, "赔偿你和乘客医疗费$XXXX/人", "没有选择该项目")
-        replace_full_paragraph(doc, "一场事故最多赔偿医疗费$XXXX", "")
-        replace_full_paragraph(doc, "赔偿自己车辆最多$XXX(自付额$250)", "")
+        replace_all_text(doc, "赔偿你和乘客医疗费$XXXX/人", "没有选择该项目")
+        replace_all_text(doc, "一场事故最多赔偿医疗费$XXXX", "")
+        replace_all_text(doc, "赔偿自己车辆最多$XXX(自付额$250)", "")
 
     # 医疗费用 Medical Payment
     write_checkbox_and_amount(doc, "Medical Payment", data["medical_payment"]["selected"])
     if data["medical_payment"]["selected"]:
-        replace_full_paragraph(doc,
+        replace_all_text(doc,
             "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX",
             f"赔偿自己和自己车上乘客在事故中受伤的医疗费每人{data['medical_payment']['med']}"
         )
     else:
-        replace_full_paragraph(doc,
+        replace_all_text(doc,
             "赔偿自己和自己车上乘客在事故中受伤的医疗费每人$XXX",
             "没有选择该项目"
         )
@@ -44,12 +44,12 @@ def generate_policy_docx(doc, data):
     # 人身伤害 Personal Injury
     write_checkbox_and_amount(doc, "Personal Injury", data["personal_injury"]["selected"])
     if data["personal_injury"]["selected"]:
-        replace_full_paragraph(doc,
+        replace_all_text(doc,
             "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX",
             f"赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人{data['personal_injury']['pip']}"
         )
     else:
-        replace_full_paragraph(doc,
+        replace_all_text(doc,
             "赔偿自己和自己车上乘客在事故中受伤的医疗费，误工费和精神损失费每人$XXX",
             "没有选择该项目"
         )
@@ -60,7 +60,8 @@ def replace_placeholder_text(doc, placeholder, replacement):
         if placeholder in paragraph.text:
             paragraph.text = paragraph.text.replace(placeholder, replacement)
 
-def replace_full_paragraph(doc, old_text, new_text):
+def replace_all_text(doc, old_text, new_text):
+    # 替换段落中的文字
     for paragraph in doc.paragraphs:
         full_text = ''.join(run.text for run in paragraph.runs)
         if old_text in full_text:
@@ -68,6 +69,17 @@ def replace_full_paragraph(doc, old_text, new_text):
                 run.text = ""
             paragraph.runs[0].text = new_text
             break
+
+    # 替换表格中的文字
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    full_text = ''.join(run.text for run in paragraph.runs)
+                    if old_text in full_text:
+                        for run in paragraph.runs:
+                            run.text = ""
+                        paragraph.runs[0].text = new_text
 
 def write_checkbox_and_amount(doc, keyword, selected):
     symbol = "✅" if selected else "❌"
