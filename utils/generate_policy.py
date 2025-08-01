@@ -3,6 +3,7 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from copy import deepcopy
 
+
 def generate_policy_docx(doc: Document, data: dict):
     # 替换公司名称和价格信息
     replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
@@ -46,15 +47,18 @@ def generate_policy_docx(doc: Document, data: dict):
 
     insert_vehicle_section(doc, data.get("vehicles", []))
 
+
 def clear_liability_section(doc):
     replace_placeholder_text(doc, "{{LIAB_BI_PP}}", "没有选择该项目")
     replace_placeholder_text(doc, "{{LIAB_BI_PA}}", "")
     replace_placeholder_text(doc, "{{LIAB_PD}}", "")
 
+
 def clear_uninsured_section(doc):
     replace_placeholder_text(doc, "{{UNINS_BI_PP}}", "没有选择该项目")
     replace_placeholder_text(doc, "{{UNINS_BI_PA}}", "")
     replace_placeholder_text(doc, "{{UNINS_PD}}", "")
+
 
 def replace_placeholder_text(doc, placeholder, replacement):
     # 替换段落中的占位符
@@ -84,6 +88,7 @@ def replace_placeholder_text(doc, placeholder, replacement):
                         else:
                             paragraph.add_run(new_text)
 
+
 def write_checkbox_and_amount(doc, keyword, selected):
     symbol = "✅" if selected else "❌"
     for table in doc.tables:
@@ -94,6 +99,7 @@ def write_checkbox_and_amount(doc, keyword, selected):
                 cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = cell.paragraphs[0].runs[0]
                 run.font.size = Pt(16)
+
 
 def insert_vehicle_section(doc: Document, vehicles: list):
     if not vehicles:
@@ -148,6 +154,7 @@ def insert_vehicle_section(doc: Document, vehicles: list):
 
         marker_p = doc.paragraphs[-1]
 
+
 def fill_vehicle_table(doc: Document, table_el, vehicle: dict):
     tbl = None
     for t in doc.tables:
@@ -181,6 +188,7 @@ def fill_vehicle_table(doc: Document, table_el, vehicle: dict):
         tbl.cell(4, 2).text = "每天$30 最多30天"
     else:
         tbl.cell(4, 2).text = "没有选择该项目"
+
 
 def update_checkbox_cell(cell, selected):
     cell.text = "✅" if selected else "❌"
