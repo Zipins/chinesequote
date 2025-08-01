@@ -6,7 +6,6 @@ from PIL import Image
 import traceback
 from copy import deepcopy
 
-
 def extract_quote_data(file, return_raw_text=False):
     file_bytes_raw = file.read()
     file_bytes = deepcopy(file_bytes_raw)
@@ -72,7 +71,6 @@ def extract_quote_data(file, return_raw_text=False):
         traceback.print_exc()
         raise
 
-
 def pdf_to_images(pdf_bytes):
     images = []
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -84,7 +82,6 @@ def pdf_to_images(pdf_bytes):
         images.append(img_buffer.getvalue())
     return images
 
-
 def extract_company_name(text):
     known_companies = ["Progressive", "Travelers", "Allstate", "Geico", "Liberty Mutual", "State Farm", "Safeco", "Nationwide"]
     for name in known_companies:
@@ -92,15 +89,18 @@ def extract_company_name(text):
             return name
     return "某保险公司"
 
-
 def extract_total_premium(text):
-    match = re.search(r"Total\s+\d+\s+month.*?[\r\n]+\$([\d,]+\.\d{2})", text, re.IGNORECASE)
-    if not match:
-        match = re.search(r"pay-in-full\s+premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"pay[- ]in[- ]full.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "pay" in line.lower() and "premium" in line.lower():
+            for j in range(i, min(i+4, len(lines))):
+                m = re.search(r"\$([\d,]+\.\d{2})", lines[j])
+                if m:
+                    return f"${m.group(1)}"
     return ""
-
 
 def extract_policy_term(text):
     match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
@@ -110,20 +110,18 @@ def extract_policy_term(text):
         return f"{match.group(1)}个月"
     return ""
 
-
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
-    bi_match = re.search(r"Liability\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text)
-    pd_match = re.search(r"Property Damage\s+(\d{1,3}[,\d]*)", text)
-    if bi_match:
-        result["bi_per_person"] = f"${bi_match.group(1)}"
-        result["bi_per_accident"] = f"${bi_match.group(2)}"
+    match = re.search(r"Liability\s*[\r\n]+.*?(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text, re.IGNORECASE)
+    if match:
+        result["bi_per_person"] = f"${match.group(1)}"
+        result["bi_per_accident"] = f"${match.group(2)}"
         result["selected"] = True
+    pd_match = re.search(r"Property Damage\s*\$?(\d{1,3}[,\d]*)", text)
     if pd_match:
         result["pd"] = f"${pd_match.group(1)}"
         result["selected"] = True
     return result
-
 
 def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
@@ -138,7 +136,6 @@ def extract_uninsured_motorist(text):
         result["selected"] = True
     return result
 
-
 def extract_medical_payment(text):
     result = {"selected": False, "med": ""}
     match = re.search(r"Medical Payments\s*\$?([\d,]+)", text)
@@ -146,7 +143,6 @@ def extract_medical_payment(text):
         result["selected"] = True
         result["med"] = f"${match.group(1)}"
     return result
-
 
 def extract_personal_injury(text):
     result = {"selected": False, "pip": ""}
@@ -156,33 +152,40 @@ def extract_personal_injury(text):
         result["pip"] = f"${match.group(1)}"
     return result
 
-
 def extract_vehicles(text):
     vehicles = []
-    vehicle_blocks = re.findall(r"(\d{4}\s+[A-Z0-9]+.*?)\n([A-HJ-NPR-Z0-9]{17}).*?\$(\d+[,.\d]*)", text, re.DOTALL)
-    for vb in vehicle_blocks:
-        model, vin, _ = vb
-        block_text = text[text.find(model):text.find(vin)+len(vin)+100]
-        vehicle = {
-            "model": model.strip(),
-            "vin": vin.strip(),
-            "collision": extract_deductible(block_text, "Collision"),
-            "comprehensive": extract_deductible(block_text, "Comprehensive"),
-            "rental": extract_presence(block_text, "Rental"),
-            "roadside": extract_presence(block_text, "Roadside Assistance")
-        }
-        vehicles.append(vehicle)
+    vin_pattern = re.compile(r"(VIN[:\s]*)?([A-HJ-NPR-Z0-9]{17})", re.IGNORECASE)
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        vin_match = vin_pattern.search(line)
+        if vin_match:
+            vin = vin_match.group(2)
+            for j in range(i-1, max(i-5, -1), -1):
+                model_line = lines[j].strip()
+                if re.match(r"\d{4}\s+[A-Z0-9 ]{3,}", model_line):
+                    model = model_line
+                    break
+            else:
+                model = "未知车型"
+            block_text = "\n".join(lines[max(i-5, 0):i+10])
+            vehicle = {
+                "model": model.strip(),
+                "vin": vin.strip(),
+                "collision": extract_deductible(block_text, "Collision"),
+                "comprehensive": extract_deductible(block_text, "Comprehensive"),
+                "rental": extract_presence(block_text, "Rental"),
+                "roadside": extract_presence(block_text, "Roadside Assistance")
+            }
+            vehicles.append(vehicle)
     return vehicles
-
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
-    match = re.search(fr"{keyword}.*?\$(\d+[,.\d]*)", text, re.IGNORECASE)
+    match = re.search(fr"{keyword}.*?\$(\d+[,\.\d]*)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["deductible"] = match.group(1)
     return result
-
 
 def extract_presence(text, keyword):
     return {"selected": keyword.lower() in text.lower()}
