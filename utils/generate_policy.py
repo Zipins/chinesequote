@@ -2,7 +2,7 @@
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from utils.generate_policy_fixed import generate_policy_docx
+from docx.oxml.shared import OxmlElement
 from copy import deepcopy
 
 
