@@ -1,198 +1,188 @@
-from docx import Document
-from docx.shared import Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+import boto3
+import re
+import io
+import fitz  # PyMuPDF
+from PIL import Image
+import traceback
 from copy import deepcopy
 
 
-def generate_policy_docx(doc: Document, data: dict):
-    # 替换公司名称和价格信息
-    replace_placeholder_text(doc, "{{COMPANY}}", data.get("company", "某保险公司"))
-    price_info = f"{data.get('total_premium', '$XXX')}/{data.get('policy_term', '6个月')}，一次性付款"
-    replace_placeholder_text(doc, "{{PRICE_INFO}}", price_info)
+def extract_quote_data(file, return_raw_text=False):
+    file_bytes_raw = file.read()
+    file_bytes = deepcopy(file_bytes_raw)
+    pdf_bytes_for_fitz = deepcopy(file_bytes_raw)
+    file_suffix = file.name.split(".")[-1].lower()
 
-    # 责任险
-    write_checkbox_and_amount(doc, "Liability", data["liability"]["selected"])
-    if data["liability"]["selected"]:
-        replace_placeholder_text(doc, "{{LIAB_BI_PP}}", data['liability']['bi_per_person'])
-        replace_placeholder_text(doc, "{{LIAB_BI_PA}}", data['liability']['bi_per_accident'])
-        replace_placeholder_text(doc, "{{LIAB_PD}}", data['liability']['pd'])
-    else:
-        clear_liability_section(doc)
+    textract = boto3.client("textract", region_name="us-east-1")
 
-    # 无保险驾驶者
-    write_checkbox_and_amount(doc, "Uninsured Motorist", data["uninsured_motorist"]["selected"])
-    if data["uninsured_motorist"]["selected"]:
-        if data["uninsured_motorist"].get("bi_per_person"):
-            replace_placeholder_text(doc, "{{UNINS_BI_PP}}", data['uninsured_motorist']['bi_per_person'])
-        if data["uninsured_motorist"].get("bi_per_accident"):
-            replace_placeholder_text(doc, "{{UNINS_BI_PA}}", data['uninsured_motorist']['bi_per_accident'])
-        if data["uninsured_motorist"].get("pd"):
-            replace_placeholder_text(doc, "{{UNINS_PD}}", data['uninsured_motorist']['pd'])
-    else:
-        clear_uninsured_section(doc)
+    def is_pdf_text_based(pdf_bytes):
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page in doc:
+                if page.get_text().strip():
+                    return True
+            return False
+        except Exception:
+            return False
 
-    # Medical Payment
-    write_checkbox_and_amount(doc, "Medical Payment", data["medical_payment"]["selected"])
-    if data["medical_payment"]["selected"]:
-        replace_placeholder_text(doc, "{{MED}}", data['medical_payment']['med'])
-    else:
-        replace_placeholder_text(doc, "{{MED}}", "没有选择该项目")
-
-    # Personal Injury
-    write_checkbox_and_amount(doc, "Personal Injury", data["personal_injury"]["selected"])
-    if data["personal_injury"]["selected"]:
-        replace_placeholder_text(doc, "{{PIP}}", data['personal_injury']['pip'])
-    else:
-        replace_placeholder_text(doc, "{{PIP}}", "没有选择该项目")
-
-    insert_vehicle_section(doc, data.get("vehicles", []))
-
-
-def clear_liability_section(doc):
-    replace_placeholder_text(doc, "{{LIAB_BI_PP}}", "没有选择该项目")
-    replace_placeholder_text(doc, "{{LIAB_BI_PA}}", "")
-    replace_placeholder_text(doc, "{{LIAB_PD}}", "")
-
-
-def clear_uninsured_section(doc):
-    replace_placeholder_text(doc, "{{UNINS_BI_PP}}", "没有选择该项目")
-    replace_placeholder_text(doc, "{{UNINS_BI_PA}}", "")
-    replace_placeholder_text(doc, "{{UNINS_PD}}", "")
-
-
-def replace_placeholder_text(doc, placeholder, replacement):
-    # 替换段落中的占位符
-    for paragraph in doc.paragraphs:
-        full_text = "".join(run.text for run in paragraph.runs)
-        if placeholder in full_text:
-            new_text = full_text.replace(placeholder, replacement)
-            for run in paragraph.runs:
-                run.text = ""
-            if paragraph.runs:
-                paragraph.runs[0].text = new_text
+    try:
+        if file_suffix == "pdf":
+            if is_pdf_text_based(pdf_bytes_for_fitz):
+                doc = fitz.open(stream=pdf_bytes_for_fitz, filetype="pdf")
+                lines = []
+                for page in doc:
+                    lines.extend(page.get_text().splitlines())
+                full_text = "\n".join(lines)
             else:
-                paragraph.add_run(new_text)
+                images = pdf_to_images(file_bytes)
+                if not images:
+                    raise ValueError("PDF 转图片失败")
+                all_text = []
+                for image_data in images:
+                    img = Image.open(io.BytesIO(image_data)).convert("RGB")
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format="PNG")
+                    img_buffer.seek(0)
+                    img_response = textract.detect_document_text(Document={"Bytes": img_buffer.read()})
+                    for block in img_response.get("Blocks", []):
+                        if block.get("BlockType") == "LINE":
+                            all_text.append(block.get("Text", ""))
+                full_text = "\n".join(all_text)
+        elif file_suffix in ["jpg", "jpeg", "png"]:
+            response = textract.detect_document_text(Document={"Bytes": file_bytes})
+            lines = [block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"]
+            full_text = "\n".join(lines)
+        else:
+            raise ValueError("不支持的文件格式")
 
-    # 替换表格中的占位符
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    full_text = "".join(run.text for run in paragraph.runs)
-                    if placeholder in full_text:
-                        new_text = full_text.replace(placeholder, replacement)
-                        for run in paragraph.runs:
-                            run.text = ""
-                        if paragraph.runs:
-                            paragraph.runs[0].text = new_text
-                        else:
-                            paragraph.add_run(new_text)
+        data = {
+            "company": extract_company_name(full_text),
+            "total_premium": extract_total_premium(full_text),
+            "policy_term": extract_policy_term(full_text),
+            "liability": extract_liability(full_text),
+            "uninsured_motorist": extract_uninsured_motorist(full_text),
+            "medical_payment": extract_medical_payment(full_text),
+            "personal_injury": extract_personal_injury(full_text),
+            "vehicles": extract_vehicles(full_text)
+        }
 
+        return (data, full_text) if return_raw_text else data
 
-def write_checkbox_and_amount(doc, keyword, selected):
-    symbol = "✅" if selected else "❌"
-    for table in doc.tables:
-        for row in table.rows:
-            if keyword in row.cells[0].text:
-                cell = row.cells[1]
-                cell.text = symbol
-                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = cell.paragraphs[0].runs[0]
-                run.font.size = Pt(16)
-
-
-def insert_vehicle_section(doc: Document, vehicles: list):
-    if not vehicles:
-        return
-
-    # 找到“车辆保障:”段落
-    marker_idx = -1
-    for i, p in enumerate(doc.paragraphs):
-        if "车辆保障:" in p.text:
-            marker_idx = i
-            break
-    if marker_idx == -1:
-        return
-
-    marker_p = doc.paragraphs[marker_idx]
-    marker_el = marker_p._element
-
-    # 清除后续旧表格和 VIN 信息
-    next_el = marker_el.getnext()
-    while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
-        to_remove = next_el
-        next_el = next_el.getnext()
-        marker_el.getparent().remove(to_remove)
-
-    # 查找模板中第一个完整车辆保障表格作为复制模板
-    vehicle_table_template = None
-    for tbl in doc.tables:
-        if "Collision" in tbl.cell(1, 0).text and "租车报销" in tbl.cell(4, 0).text:
-            vehicle_table_template = tbl
-            break
-    if not vehicle_table_template:
-        return
-
-    for vehicle in vehicles:
-        # 插入视觉空行
-        spacer_p = marker_p.insert_paragraph_after("·")
-        spacer_p.runs[0].font.size = Pt(1)
-        spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
-
-        # 插入 VIN 信息
-        vin_text = f"{vehicle['model']}     VIN：{vehicle['vin']}"
-        vin_p = spacer_p.insert_paragraph_after(vin_text)
-        vin_p.runs[0].font.size = Pt(12)
-        vin_p.runs[0].bold = True
-
-        # 插入复制表格
-        new_table = deepcopy(vehicle_table_template._element)
-        vin_p._element.addnext(new_table)
-        new_table_obj = vin_p._element.getnext()
-
-        fill_vehicle_table(doc, new_table_obj, vehicle)
-
-        marker_p = doc.paragraphs[-1]
+    except Exception:
+        traceback.print_exc()
+        raise
 
 
-def fill_vehicle_table(doc: Document, table_el, vehicle: dict):
-    tbl = None
-    for t in doc.tables:
-        if t._element == table_el:
-            tbl = t
-            break
-    if not tbl:
-        return
-
-    update_checkbox_cell(tbl.cell(1, 1), vehicle["collision"]["selected"])
-    update_checkbox_cell(tbl.cell(2, 1), vehicle["comprehensive"]["selected"])
-    update_checkbox_cell(tbl.cell(3, 1), vehicle["roadside"]["selected"])
-    update_checkbox_cell(tbl.cell(4, 1), vehicle["rental"]["selected"])
-
-    if vehicle["collision"]["selected"]:
-        tbl.cell(1, 2).text = f"自付额${vehicle['collision']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
-    else:
-        tbl.cell(1, 2).text = "没有选择该项目"
-
-    if vehicle["comprehensive"]["selected"]:
-        tbl.cell(2, 2).text = f"自付额${vehicle['comprehensive']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
-    else:
-        tbl.cell(2, 2).text = "没有选择该项目"
-
-    if vehicle["roadside"]["selected"]:
-        tbl.cell(3, 2).text = "赔偿由于:机械故障,电瓶没电,钥匙被锁车内,燃油耗尽,轮胎没气造成车辆不可行驶时的免费拖车，免费充电，免费开锁服务"
-    else:
-        tbl.cell(3, 2).text = "没有选择该项目"
-
-    if vehicle["rental"]["selected"]:
-        tbl.cell(4, 2).text = "每天$30 最多30天"
-    else:
-        tbl.cell(4, 2).text = "没有选择该项目"
+def pdf_to_images(pdf_bytes):
+    images = []
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    for page in doc:
+        pix = page.get_pixmap(dpi=300, alpha=False)
+        img_buffer = io.BytesIO()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img.save(img_buffer, format="PNG")
+        images.append(img_buffer.getvalue())
+    return images
 
 
-def update_checkbox_cell(cell, selected):
-    cell.text = "✅" if selected else "❌"
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.runs[0]
-    run.font.size = Pt(16)
+def extract_company_name(text):
+    known_companies = ["Progressive", "Travelers", "Allstate", "Geico", "Liberty Mutual", "State Farm", "Safeco", "Nationwide"]
+    for name in known_companies:
+        if name.lower() in text.lower():
+            return name
+    return "某保险公司"
+
+
+def extract_total_premium(text):
+    match = re.search(r"Total\s+\d+\s+month.*?[\r\n]+\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"pay-in-full\s+premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    if match:
+        return f"${match.group(1)}"
+    return ""
+
+
+def extract_policy_term(text):
+    match = re.search(r"Total\s+(\d+)\s+month", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"(\d+)\s+month\s+policy", text, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)}个月"
+    return ""
+
+
+def extract_liability(text):
+    result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
+    bi_match = re.search(r"Liability\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text)
+    pd_match = re.search(r"Property Damage\s+(\d{1,3}[,\d]*)", text)
+    if bi_match:
+        result["bi_per_person"] = f"${bi_match.group(1)}"
+        result["bi_per_accident"] = f"${bi_match.group(2)}"
+        result["selected"] = True
+    if pd_match:
+        result["pd"] = f"${pd_match.group(1)}"
+        result["selected"] = True
+    return result
+
+
+def extract_uninsured_motorist(text):
+    result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
+    bi_match = re.search(r"Unins.*?Motorists\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text)
+    pd_match = re.search(r"Unins.*?Motorists PD\s+(\d{1,3}[,\d]*)", text)
+    if bi_match:
+        result["bi_per_person"] = f"${bi_match.group(1)}"
+        result["bi_per_accident"] = f"${bi_match.group(2)}"
+        result["selected"] = True
+    if pd_match:
+        result["pd"] = f"${pd_match.group(1)}"
+        result["selected"] = True
+    return result
+
+
+def extract_medical_payment(text):
+    result = {"selected": False, "med": ""}
+    match = re.search(r"Medical Payments\s*\$?([\d,]+)", text)
+    if match:
+        result["selected"] = True
+        result["med"] = f"${match.group(1)}"
+    return result
+
+
+def extract_personal_injury(text):
+    result = {"selected": False, "pip": ""}
+    match = re.search(r"Personal Injury Protection\s*\$?([\d,]+)", text)
+    if match:
+        result["selected"] = True
+        result["pip"] = f"${match.group(1)}"
+    return result
+
+
+def extract_vehicles(text):
+    vehicles = []
+    vehicle_blocks = re.findall(r"(\d{4}\s+[A-Z0-9]+.*?)\n([A-HJ-NPR-Z0-9]{17}).*?\$(\d+[,.\d]*)", text, re.DOTALL)
+    for vb in vehicle_blocks:
+        model, vin, _ = vb
+        block_text = text[text.find(model):text.find(vin)+len(vin)+100]
+        vehicle = {
+            "model": model.strip(),
+            "vin": vin.strip(),
+            "collision": extract_deductible(block_text, "Collision"),
+            "comprehensive": extract_deductible(block_text, "Comprehensive"),
+            "rental": extract_presence(block_text, "Rental"),
+            "roadside": extract_presence(block_text, "Roadside Assistance")
+        }
+        vehicles.append(vehicle)
+    return vehicles
+
+
+def extract_deductible(text, keyword):
+    result = {"selected": False, "deductible": ""}
+    match = re.search(fr"{keyword}.*?\$(\d+[,.\d]*)", text, re.IGNORECASE)
+    if match:
+        result["selected"] = True
+        result["deductible"] = match.group(1)
+    return result
+
+
+def extract_presence(text, keyword):
+    return {"selected": keyword.lower() in text.lower()}
