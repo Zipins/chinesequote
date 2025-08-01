@@ -52,7 +52,6 @@ def insert_vehicle_section(doc: Document, vehicles: list):
     if not vehicles:
         return
 
-    # 找到“车辆保障:”段落
     marker_idx = -1
     for i, p in enumerate(doc.paragraphs):
         if "车辆保障:" in p.text:
@@ -64,14 +63,14 @@ def insert_vehicle_section(doc: Document, vehicles: list):
     marker_p = doc.paragraphs[marker_idx]
     marker_el = marker_p._element
 
-    # 清除后续旧表格和 VIN 信息
+    # 删除旧的车辆段落和表格
     next_el = marker_el.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
         next_el = next_el.getnext()
         marker_el.getparent().remove(to_remove)
 
-    # 查找模板中第一个完整车辆保障表格作为复制模板
+    # 查找模板中第一个车辆保障表格作为复制源
     vehicle_table_template = None
     for tbl in doc.tables:
         if "Collision" in tbl.cell(1, 0).text and "租车报销" in tbl.cell(4, 0).text:
@@ -83,25 +82,26 @@ def insert_vehicle_section(doc: Document, vehicles: list):
     for vehicle in vehicles:
         # 插入视觉空行
         spacer_p = marker_p.insert_paragraph_after("·")
-        spacer_p.runs[0].font.size = Pt(1)
-        spacer_p.runs[0].font.color.rgb = RGBColor(255, 255, 255)
+        spacer_run = spacer_p.runs[0]
+        spacer_run.font.size = Pt(1)
+        spacer_run.font.color.rgb = RGBColor(255, 255, 255)
 
         # 插入 VIN 信息
         vin_text = f"{vehicle['model']}     VIN：{vehicle['vin']}"
         vin_p = spacer_p.insert_paragraph_after(vin_text)
-        vin_p.runs[0].font.size = Pt(12)
-        vin_p.runs[0].bold = True
+        vin_run = vin_p.runs[0]
+        vin_run.font.size = Pt(12)
+        vin_run.bold = True
 
-        # 插入复制表格
-        new_table = deepcopy(vehicle_table_template._element)
-        vin_p._element.addnext(new_table)
-        new_table_obj = vin_p._element.getnext()  # 定位到刚插入的表格对象
+        # 插入表格（复制模板）
+        new_tbl = deepcopy(vehicle_table_template._element)
+        vin_p._element.addnext(new_tbl)
 
-        # 填入表格内容
-        fill_vehicle_table(doc, new_table_obj, vehicle)
-
-        # 更新 marker_p 指向新表格，以便继续插入后续
-        marker_p = doc.paragraphs[-1]
+        # 查找刚插入的新表格
+        for tbl in doc.tables:
+            if tbl._element == vin_p._element.getnext():
+                fill_vehicle_table(doc, tbl._element, vehicle)
+                break
 
 
 def fill_vehicle_table(doc: Document, table_el, vehicle: dict):
@@ -113,13 +113,13 @@ def fill_vehicle_table(doc: Document, table_el, vehicle: dict):
     if not tbl:
         return
 
-    # ✅/❌
+    # ✅/❌ 状态填入
     update_checkbox_cell(tbl.cell(1, 1), vehicle["collision"]["selected"])
     update_checkbox_cell(tbl.cell(2, 1), vehicle["comprehensive"]["selected"])
     update_checkbox_cell(tbl.cell(3, 1), vehicle["roadside"]["selected"])
     update_checkbox_cell(tbl.cell(4, 1), vehicle["rental"]["selected"])
 
-    # 填入说明
+    # 填入描述
     if vehicle["collision"]["selected"]:
         tbl.cell(1, 2).text = f"自付额${vehicle['collision']['deductible']}\n修车时自付额以内自己出，自付额以外的保险公司赔付"
     else:
@@ -172,3 +172,4 @@ def write_checkbox_and_amount(doc, keyword, selected):
                 cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = cell.paragraphs[0].runs[0]
                 run.font.size = Pt(16)
+
