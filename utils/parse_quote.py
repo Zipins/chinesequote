@@ -196,8 +196,7 @@ def extract_deductible_multi(text, keyword):
     lines = text.splitlines()
     for line in lines:
         if keyword.lower() in line.lower():
-            match = re.search(rf"{keyword}[^
-\d]*?(\d{{1,4}})", line, re.IGNORECASE)
+            match = re.search(rf"{keyword}[^\d]*?(\d{{1,4}})", line, re.IGNORECASE)
             if match:
                 result["selected"] = True
                 result["deductible"] = match.group(1)
