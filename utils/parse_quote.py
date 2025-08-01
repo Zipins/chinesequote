@@ -140,36 +140,24 @@ def extract_uninsured_motorist(text):
         "pd": "",
         "deductible": "250"
     }
-
     lines = text.splitlines()
     for i, line in enumerate(lines):
         line_lc = line.lower()
-
-        # 找 UMBI
-        if "uninsd" in line_lc or "uninsured" in line_lc:
-            if "pd" not in line_lc:
-                # 往上找 / 格式额度
-                for offset in [-2, -1, 1, 2]:
-                    j = i + offset
-                    if 0 <= j < len(lines):
-                        match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
-                        if match:
-                            result["bi_per_person"] = f"${match.group(1)}"
-                            result["bi_per_accident"] = f"${match.group(2)}"
-                            result["selected"] = True
-                            break
-
-        # 找 UMPD
-        if ("uninsd" in line_lc or "uninsured" in line_lc) and "pd" in line_lc:
+        if ("uninsd" in line_lc or "uninsured" in line_lc) and "pd" not in line_lc:
             for offset in [-2, -1, 1, 2]:
-                j = i + offset
-                if 0 <= j < len(lines):
-                    match = re.search(r"\$?(\d{1,4}(,\d{3})*)", lines[j])
+                if 0 <= i + offset < len(lines):
+                    match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[i + offset])
+                    if match:
+                        result["bi_per_person"] = f"${match.group(1)}"
+                        result["bi_per_accident"] = f"${match.group(2)}"
+                        result["selected"] = True
+        if ("uninsd" in line_lc and "pd" in line_lc):
+            for offset in [-2, -1, 1, 2]:
+                if 0 <= i + offset < len(lines):
+                    match = re.search(r"(\d{1,3}[,\d]*)", lines[i + offset])
                     if match:
                         result["pd"] = f"${match.group(1)}"
                         result["selected"] = True
-                        break
-
     return result
 
 def extract_medical_payment(text):
@@ -202,7 +190,7 @@ def extract_vehicles(text):
                 if re.match(r"\d{4}\s+[A-Z0-9 ]{3,}", model_line):
                     model = model_line
                     break
-            block_text = "\n".join(lines[max(i-5, 0):i+15])
+            block_text = "\n".join(lines[max(i-15, 0):i+15])
             vehicle = {
                 "model": model.strip(),
                 "vin": vin.strip(),
@@ -219,19 +207,21 @@ def extract_deductible_multi(text, keyword):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            for j in range(i, min(i+2, len(lines))):
-                match = re.search(r"(\d{2,5})", lines[j])
-                if match:
-                    result["selected"] = True
-                    result["deductible"] = match.group(1)
-                    return result
+            for j in range(i-2, i+3):
+                if 0 <= j < len(lines):
+                    match = re.search(r"(\d{2,5})", lines[j])
+                    if match:
+                        result["selected"] = True
+                        result["deductible"] = match.group(1)
+                        return result
     return result
 
 def extract_presence_multi(text, keyword):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
-            for j in range(i, min(i+2, len(lines))):
-                if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
-                    return {"selected": True}
+            for j in range(i-2, i+3):
+                if 0 <= j < len(lines):
+                    if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
+                        return {"selected": True}
     return {"selected": False}
