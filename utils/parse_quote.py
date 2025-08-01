@@ -124,16 +124,18 @@ def extract_liability(text):
                     break
     for i, line in enumerate(lines):
         if "property damage" in line.lower():
-            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
-            if pd_match:
-                result["pd"] = f"${pd_match.group(1)}"
-                result["selected"] = True
+            for j in range(i, min(i+3, len(lines))):
+                pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
+                if pd_match:
+                    result["pd"] = f"${pd_match.group(1)}"
+                    result["selected"] = True
+                    break
     return result
 
 def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
-    bi_match = re.search(r"Unins.*?Motorists\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text)
-    pd_match = re.search(r"Unins.*?Motorists PD\s+(\d{1,3}[,\d]*)", text)
+    bi_match = re.search(r"Unins.*?Motorists\s+(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text, re.IGNORECASE)
+    pd_match = re.search(r"Unins.*?Motorists PD\s+(\d{1,3}[,\d]*)", text, re.IGNORECASE)
     if bi_match:
         result["bi_per_person"] = f"${bi_match.group(1)}"
         result["bi_per_accident"] = f"${bi_match.group(2)}"
@@ -188,11 +190,21 @@ def extract_vehicles(text):
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
-    match = re.search(fr"{keyword}.*?\$(\d+[,.\d]*)", text, re.IGNORECASE)
-    if match:
-        result["selected"] = True
-        result["deductible"] = match.group(1)
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if keyword.lower() in line.lower():
+            for j in range(i, min(i+3, len(lines))):
+                match = re.search(r"(\d{1,3}[,\d]*)\s+\$\d", lines[j])
+                if match:
+                    result["selected"] = True
+                    result["deductible"] = match.group(1)
+                    return result
     return result
 
 def extract_presence(text, keyword):
-    return {"selected": keyword.lower() in text.lower()}
+    lines = text.splitlines()
+    for line in lines:
+        if keyword.lower() in line.lower():
+            if re.search(r"\$?\d{1,3}(,\d{3})*(\.\d{2})?", line):
+                return {"selected": True}
+    return {"selected": False}
