@@ -136,16 +136,16 @@ def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if "unins" in line.lower() and "/" in line and "pd" not in line.lower():
+        if "unins" in line.lower() and "/" in line:
             match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", line)
             if match:
                 result["bi_per_person"] = f"${match.group(1)}"
                 result["bi_per_accident"] = f"${match.group(2)}"
                 result["selected"] = True
         if "unins" in line.lower() and "pd" in line.lower():
-            match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
-            if match:
-                result["pd"] = f"${match.group(1)}"
+            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
+            if pd_match:
+                result["pd"] = f"${pd_match.group(1)}"
                 result["selected"] = True
     return result
 
@@ -179,31 +179,34 @@ def extract_vehicles(text):
                 if re.match(r"\d{4}\s+[A-Z0-9 ]{3,}", model_line):
                     model = model_line
                     break
-            block_text = "\n".join(lines[max(i-5, 0):i+10])
+            block_text = "\n".join(lines[max(i-5, 0):i+15])
             vehicle = {
                 "model": model.strip(),
                 "vin": vin.strip(),
-                "collision": extract_deductible_same_line(block_text, "Collision"),
-                "comprehensive": extract_deductible_same_line(block_text, "Comprehensive"),
-                "rental": extract_presence_strict(block_text, "Rental"),
-                "roadside": extract_presence_strict(block_text, "Roadside Assistance")
+                "collision": extract_deductible_multi(block_text, "Collision"),
+                "comprehensive": extract_deductible_multi(block_text, "Comprehensive"),
+                "rental": extract_presence_multi(block_text, "Rental"),
+                "roadside": extract_presence_multi(block_text, "Roadside Assistance")
             }
             vehicles.append(vehicle)
     return vehicles
 
-def extract_deductible_same_line(text, keyword):
+def extract_deductible_multi(text, keyword):
     result = {"selected": False, "deductible": ""}
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for line in lines:
         if keyword.lower() in line.lower():
-            match = re.search(rf"{keyword}[^\d]*(\d{{1,4}})", line, re.IGNORECASE)
+            match = re.search(rf"{keyword}[^
+\d]*?(\d{{1,4}})", line, re.IGNORECASE)
             if match:
                 result["selected"] = True
                 result["deductible"] = match.group(1)
-                return result
+                break
     return result
 
-def extract_presence_strict(text, keyword):
-    for line in text.splitlines():
+def extract_presence_multi(text, keyword):
+    lines = text.splitlines()
+    for line in lines:
         if keyword.lower() in line.lower():
             if re.search(r"\$?\d{1,4}(\.\d{2})?", line):
                 return {"selected": True}
