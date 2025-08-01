@@ -57,17 +57,32 @@ def clear_uninsured_section(doc):
     replace_placeholder_text(doc, "{{UNINS_PD}}", "")
 
 def replace_placeholder_text(doc, placeholder, replacement):
+    # 替换段落中的占位符
     for paragraph in doc.paragraphs:
         full_text = "".join(run.text for run in paragraph.runs)
         if placeholder in full_text:
             new_text = full_text.replace(placeholder, replacement)
-            # 清空所有 run 并写入新内容
             for run in paragraph.runs:
                 run.text = ""
             if paragraph.runs:
                 paragraph.runs[0].text = new_text
             else:
                 paragraph.add_run(new_text)
+
+    # 替换表格中的占位符
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    full_text = "".join(run.text for run in paragraph.runs)
+                    if placeholder in full_text:
+                        new_text = full_text.replace(placeholder, replacement)
+                        for run in paragraph.runs:
+                            run.text = ""
+                        if paragraph.runs:
+                            paragraph.runs[0].text = new_text
+                        else:
+                            paragraph.add_run(new_text)
 
 def write_checkbox_and_amount(doc, keyword, selected):
     symbol = "✅" if selected else "❌"
@@ -173,4 +188,3 @@ def update_checkbox_cell(cell, selected):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.runs[0]
     run.font.size = Pt(16)
-
