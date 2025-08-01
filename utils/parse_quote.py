@@ -220,4 +220,4 @@ def extract_presence_multi(text, keyword):
             for j in range(i, min(i+2, len(lines))):
                 if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
                     return {"selected": True}
-    return {"selected": False"}
+    return {"selected": False}
