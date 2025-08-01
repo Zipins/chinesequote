@@ -143,14 +143,13 @@ def extract_uninsured_motorist(text):
                 result["bi_per_person"] = f"${slash_match.group(1)}"
                 result["bi_per_accident"] = f"${slash_match.group(2)}"
                 result["selected"] = True
-            else:
-                # 看下一行是否是数字
-                if i+1 < len(lines):
-                    match2 = re.search(r"(\d{1,3}[,\d]{0,3})/(\d{1,3}[,\d]{0,3})", lines[i+1])
-                    if match2:
-                        result["bi_per_person"] = f"${match2.group(1)}"
-                        result["bi_per_accident"] = f"${match2.group(2)}"
-                        result["selected"] = True
+            elif i+1 < len(lines):
+                next_line = lines[i+1].strip()
+                next_match = re.search(r"(\d{1,3}[,\d]{0,3})/(\d{1,3}[,\d]{0,3})", next_line)
+                if next_match:
+                    result["bi_per_person"] = f"${next_match.group(1)}"
+                    result["bi_per_accident"] = f"${next_match.group(2)}"
+                    result["selected"] = True
         if "motorists pd" in line_lc:
             amount_match = re.search(r"\b(\d{1,3}[,\d]*)\b", line)
             if amount_match:
