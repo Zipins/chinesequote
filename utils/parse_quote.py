@@ -90,16 +90,16 @@ def extract_company_name(text):
     return "某保险公司"
 
 def extract_total_premium(text):
-    match = re.search(r"pay.*?premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"pay[-\s]*in[-\s]*full.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if "pay" in line.lower() and "premium" in line.lower():
-            for j in range(i, min(i + 5, len(lines))):
-                m = re.search(r"\$([\d,]+\.\d{2})", lines[j])
-                if m:
-                    return f"${m.group(1)}"
+    match = re.search(r"paid[-\s]*in[-\s]*full.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    if match:
+        return f"${match.group(1)}"
+    amounts = re.findall(r"\$([\d,]+\.\d{2})", text)
+    candidates = [float(a.replace(",", "")) for a in amounts if float(a.replace(",", "")) > 1000]
+    if candidates:
+        return f"${max(candidates):,.2f}"
     return ""
 
 def extract_policy_term(text):
