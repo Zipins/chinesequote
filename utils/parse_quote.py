@@ -90,13 +90,13 @@ def extract_company_name(text):
     return "某保险公司"
 
 def extract_total_premium(text):
-    match = re.search(r"pay[- ]in[- ]full.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
+    match = re.search(r"pay.*?premium.*?\$([\d,]+\.\d{2})", text, re.IGNORECASE)
     if match:
         return f"${match.group(1)}"
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if "pay" in line.lower() and "premium" in line.lower():
-            for j in range(i, min(i+4, len(lines))):
+            for j in range(i, min(i + 5, len(lines))):
                 m = re.search(r"\$([\d,]+\.\d{2})", lines[j])
                 if m:
                     return f"${m.group(1)}"
@@ -112,15 +112,22 @@ def extract_policy_term(text):
 
 def extract_liability(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": ""}
-    match = re.search(r"Liability\s*[\r\n]+.*?(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", text, re.IGNORECASE)
-    if match:
-        result["bi_per_person"] = f"${match.group(1)}"
-        result["bi_per_accident"] = f"${match.group(2)}"
-        result["selected"] = True
-    pd_match = re.search(r"Property Damage\s*\$?(\d{1,3}[,\d]*)", text)
-    if pd_match:
-        result["pd"] = f"${pd_match.group(1)}"
-        result["selected"] = True
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "liability" in line.lower():
+            for j in range(i + 1, min(i + 5, len(lines))):
+                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", lines[j])
+                if match:
+                    result["bi_per_person"] = f"${match.group(1)}"
+                    result["bi_per_accident"] = f"${match.group(2)}"
+                    result["selected"] = True
+                    break
+    for i, line in enumerate(lines):
+        if "property damage" in line.lower():
+            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", line)
+            if pd_match:
+                result["pd"] = f"${pd_match.group(1)}"
+                result["selected"] = True
     return result
 
 def extract_uninsured_motorist(text):
@@ -181,7 +188,7 @@ def extract_vehicles(text):
 
 def extract_deductible(text, keyword):
     result = {"selected": False, "deductible": ""}
-    match = re.search(fr"{keyword}.*?\$(\d+[,\.\d]*)", text, re.IGNORECASE)
+    match = re.search(fr"{keyword}.*?\$(\d+[,.\d]*)", text, re.IGNORECASE)
     if match:
         result["selected"] = True
         result["deductible"] = match.group(1)
