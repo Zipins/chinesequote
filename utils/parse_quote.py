@@ -143,8 +143,16 @@ def extract_uninsured_motorist(text):
                 result["bi_per_person"] = f"${slash_match.group(1)}"
                 result["bi_per_accident"] = f"${slash_match.group(2)}"
                 result["selected"] = True
+            else:
+                # 看下一行是否是数字
+                if i+1 < len(lines):
+                    match2 = re.search(r"(\d{1,3}[,\d]{0,3})/(\d{1,3}[,\d]{0,3})", lines[i+1])
+                    if match2:
+                        result["bi_per_person"] = f"${match2.group(1)}"
+                        result["bi_per_accident"] = f"${match2.group(2)}"
+                        result["selected"] = True
         if "motorists pd" in line_lc:
-            amount_match = re.search(r"(\d{1,3}[,\d]*)", line)
+            amount_match = re.search(r"\b(\d{1,3}[,\d]*)\b", line)
             if amount_match:
                 result["pd"] = f"${amount_match.group(1)}"
                 result["selected"] = True
@@ -212,4 +220,4 @@ def extract_presence_multi(text, keyword):
             for j in range(i, min(i+2, len(lines))):
                 if re.search(r"\$?\d{1,4}(\.\d{2})?", lines[j]):
                     return {"selected": True}
-    return {"selected": False}
+    return {"selected": False"}
