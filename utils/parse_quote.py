@@ -135,19 +135,18 @@ def extract_liability(text):
 def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
-    for i in range(len(lines) - 2):
-        block = lines[i:i+3]
-        block_text = " ".join(block).lower()
-        if "uninsd" in block_text or "uninsured" in block_text:
-            slash_match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", block_text)
+    for i, line in enumerate(lines):
+        line_lc = line.lower()
+        if "uninsd" in line_lc or "uninsured" in line_lc:
+            slash_match = re.search(r"(\d{1,3}[,\d]{0,3})/(\d{1,3}[,\d]{0,3})", line)
             if slash_match:
                 result["bi_per_person"] = f"${slash_match.group(1)}"
                 result["bi_per_accident"] = f"${slash_match.group(2)}"
                 result["selected"] = True
-        if "motorists pd" in block_text:
-            pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", block_text)
-            if pd_match:
-                result["pd"] = f"${pd_match.group(1)}"
+        if "motorists pd" in line_lc:
+            amount_match = re.search(r"(\d{1,3}[,\d]*)", line)
+            if amount_match:
+                result["pd"] = f"${amount_match.group(1)}"
                 result["selected"] = True
     return result
 
