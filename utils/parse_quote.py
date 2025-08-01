@@ -136,13 +136,24 @@ def extract_uninsured_motorist(text):
     result = {"selected": False, "bi_per_person": "", "bi_per_accident": "", "pd": "", "deductible": "250"}
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if ("uninsured" in line.lower() or "uninsd" in line.lower()) and "/" in line:
+        lower_line = line.lower()
+        if ("uninsured" in lower_line or "uninsd" in lower_line):
+            # 判断当前行是否有人身伤害金额
             match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", line)
             if match:
                 result["bi_per_person"] = f"${match.group(1)}"
                 result["bi_per_accident"] = f"${match.group(2)}"
                 result["selected"] = True
-        if ("uninsured" in line.lower() or "uninsd" in line.lower()) and "pd" in line.lower():
+            # 如果没有，在下一行找金额
+            elif i + 1 < len(lines):
+                next_line = lines[i + 1]
+                match = re.search(r"(\d{1,3}[,\d]*)/(\d{1,3}[,\d]*)", next_line)
+                if match:
+                    result["bi_per_person"] = f"${match.group(1)}"
+                    result["bi_per_accident"] = f"${match.group(2)}"
+                    result["selected"] = True
+        # 判断 UMPD
+        if ("uninsured" in lower_line or "uninsd" in lower_line) and "pd" in lower_line:
             for j in range(i, min(i+2, len(lines))):
                 pd_match = re.search(r"\$?(\d{1,3}[,\d]*)", lines[j])
                 if pd_match:
