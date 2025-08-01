@@ -1,3 +1,4 @@
+
 from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -63,14 +64,12 @@ def insert_vehicle_section(doc: Document, vehicles: list):
     marker_p = doc.paragraphs[marker_idx]
     marker_el = marker_p._element
 
-    # 清除旧 VIN 和表格
     next_el = marker_el.getnext()
     while next_el is not None and (next_el.tag.endswith("p") or next_el.tag.endswith("tbl")):
         to_remove = next_el
         next_el = next_el.getnext()
         marker_el.getparent().remove(to_remove)
 
-    # 获取样板表格
     vehicle_table_template = None
     for tbl in doc.tables:
         if "Collision" in tbl.cell(1, 0).text and "租车报销" in tbl.cell(4, 0).text:
@@ -80,24 +79,20 @@ def insert_vehicle_section(doc: Document, vehicles: list):
         return
 
     for vehicle in vehicles:
-        # 插入视觉空行
         spacer_p = marker_p.insert_paragraph_after("·")
         spacer_run = spacer_p.runs[0]
         spacer_run.font.size = Pt(1)
         spacer_run.font.color.rgb = RGBColor(255, 255, 255)
 
-        # 插入 VIN 信息
         vin_text = f"{vehicle['model']}     VIN：{vehicle['vin']}"
         vin_p = spacer_p.insert_paragraph_after(vin_text)
         vin_run = vin_p.runs[0]
         vin_run.font.size = Pt(12)
         vin_run.bold = True
 
-        # 插入复制表格
         new_tbl = deepcopy(vehicle_table_template._element)
         vin_p._element.addnext(new_tbl)
 
-        # 写入表格内容
         for tbl in doc.tables:
             if tbl._element == vin_p._element.getnext():
                 fill_vehicle_table(doc, tbl._element, vehicle)
