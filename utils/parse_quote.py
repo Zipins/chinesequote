@@ -218,7 +218,7 @@ def extract_liability(text: str) -> Dict[str, Any]:
     for i, line in enumerate(lines):
         if re.search(r"Property\s+Damage\s*(Liability)?\b", line, flags=re.I):
             for w in _window(lines, i, 3, 3):
-                m = re.search(MONEY_RE, w) or re.search(r"\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
+                m = re.search(MONEY_RE, w) or re.search(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
                 if m:
                     res["pd"] = normalize_money(m.group(0))
                     res["selected"] = True
@@ -246,7 +246,7 @@ def extract_uninsured_motorist(text: str) -> Dict[str, Any]:
     for i, line in enumerate(lines):
         if any(k.lower() in line.lower() for k in UMPD_KEYS):
             for w in _window(lines, i, 3, 3):
-                pm = re.search(r"\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
+                pm = re.search(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
                 if pm:
                     umb["pd"] = normalize_money(pm.group(0))
                     umb["selected"] = True
@@ -332,7 +332,7 @@ def extract_deductible_bidirectional(text: str, keyword: str) -> Dict[str, Any]:
     for i, line in enumerate(lines):
         if keyword.lower() in line.lower():
             for w in _window(lines, i, 3, 3):
-                m_plain = re.search(r"\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
+                m_plain = re.search(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", w)
                 if m_plain:
                     result["selected"] = True
                     result["deductible"] = re.sub(r"[^\d]", "", m_plain.group(0))
@@ -368,4 +368,158 @@ def extract_presence_bidirectional(text: str, keyword: str) -> Dict[str, Any]:
     if "roadside assistance coverage" in text.lower():
         return {"selected": True}
     return {"selected": False}
+
+# ===== Linear Coverages Assembler (for messy OCR order) =====
+
+def _coverages_block_lines(text: str) -> List[str]:
+    lines = [ln.strip() for ln in text.splitlines()]
+    if not lines:
+        return []
+    start_idx = None
+    for i, ln in enumerate(lines):
+        if re.search(r"\bCoverages\b", ln, re.IGNORECASE):
+            start_idx = i
+            break
+    if start_idx is None:
+        return []
+    # end boundary
+    end_markers = [
+        r"TOTAL\s+PER\s+VEHICLE", r"Discounts", r"Taxes\s+and\s+Fees",
+        r"Driver\s+Quote\s+Details", r"Vehicle\s+Quote\s+Details"
+    ]
+    end_idx = len(lines)
+    for i in range(start_idx+1, len(lines)):
+        seg = lines[i]
+        if any(re.search(pat, seg, re.IGNORECASE) for pat in end_markers):
+            end_idx = i
+            break
+    block = [ln for ln in lines[start_idx:end_idx] if ln]
+    return block
+
+def _is_limit_pair(s: str) -> bool:
+    return re.search(LIMIT_RE, s) is not None
+
+def _is_plain_integer_amount(s: str) -> bool:
+    # e.g., 25,000 or 1000 (avoid decimals)
+    return re.search(r"^\d{2,5}(?:,\d{3})?$", s) is not None
+
+def _is_premium_money(s: str) -> bool:
+    m = re.search(r"^\$([\d,]+\.\d{2})$", s)
+    if not m:
+        return False
+    try:
+        val = float(m.group(1).replace(",", ""))
+        return val < 1000.0   # premiums per coverage are small; exclude totals
+    except Exception:
+        return False
+
+def _canon_label(s: str) -> str:
+    t = s.lower()
+    mapping = {
+        "liability": ["liability", "bodily injury liability", "liability to others"],
+        "property_damage": ["property damage", "property damage liability"],
+        "umbi": ["uninsured/underinsured motorists", "uninsured motorist bodily injury", "underinsured motorist bodily injury", "umbi", "uninsd/underinsd motorists"],
+        "umpd": ["uninsured/underinsured motorists pd", "uninsured motorist property damage", "underinsured motorist property damage", "umpd", "uninsd/underinsd motorists pd"],
+        "comprehensive": ["comprehensive"],
+        "collision": ["collision"],
+        "rental": ["rental"],
+        "roadside": ["roadside assistance", "roadside assistance coverage", "roadside"],
+    }
+    for k, arr in mapping.items():
+        if any(a in t for a in arr):
+            return k
+    return ""
+
+def _parse_coverages_linear(lines: List[str]) -> Dict[str, Any]:
+    """
+    Walk through OCR coverages block where limits/premiums may appear above or below labels.
+    Returns canonical fields.
+    """
+    out = {
+        "li_bi_pair": "", "li_pd": "",
+        "umbi_pair": "", "umpd_amount": "",
+        "comp_ded": "", "coll_ded": "",
+        "rental_limit": "", "roadside": False
+    }
+    n = len(lines)
+    for i, ln in enumerate(lines):
+        label = _canon_label(ln)
+        if not label:
+            continue
+
+        def grab_nearby(pattern: str, lookbehind=3, lookahead=3):
+            # search back then forward
+            for j in range(1, lookbehind+1):
+                k = i - j
+                if k >= 0 and re.search(pattern, lines[k]):
+                    return re.search(pattern, lines[k]).group(0)
+            for j in range(1, lookahead+1):
+                k = i + j
+                if k < n and re.search(pattern, lines[k]):
+                    return re.search(pattern, lines[k]).group(0)
+            return ""
+
+        if label == "liability":
+            pair = grab_nearby(r"(\d{1,3}(?:,\d{3})?)\s*/\s*(\d{1,3}(?:,\d{3})?)", 3, 3)
+            if pair:
+                out["li_bi_pair"] = pair
+        elif label == "property_damage":
+            amt = grab_nearby(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", 3, 3)
+            if amt:
+                out["li_pd"] = amt
+        elif label == "umbi":
+            pair = grab_nearby(r"(\d{1,3}(?:,\d{3})?)\s*/\s*(\d{1,3}(?:,\d{3})?)", 3, 3)
+            if pair:
+                out["umbi_pair"] = pair
+        elif label == "umpd":
+            amt = grab_nearby(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", 3, 3)
+            if amt:
+                out["umpd_amount"] = amt
+        elif label == "comprehensive":
+            ded = grab_nearby(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", 3, 3)
+            if ded:
+                out["comp_ded"] = ded.replace(",", "")
+        elif label == "collision":
+            ded = grab_nearby(r"(?<![\d\.,])\b\d{2,5}(?:,\d{3})?\b(?!\.\d{2})", 3, 3)
+            if ded:
+                out["coll_ded"] = ded.replace(",", "")
+        elif label == "rental":
+            lim = grab_nearby(LIMIT_RE, 4, 2)  # often appears a few lines above
+            if lim:
+                out["rental_limit"] = re.search(LIMIT_RE, lim).group(0)
+        elif label == "roadside":
+            out["roadside"] = True
+    return out
+
+def _merge_linear_into_data(data: Dict[str, Any], linear: Dict[str, Any]) -> None:
+    if linear.get("li_bi_pair"):
+        m = re.search(r"(\d{1,3}(?:,\d{3})?)\s*/\s*(\d{1,3}(?:,\d{3})?)", linear["li_bi_pair"])
+        if m:
+            data["liability"]["bi_per_person"] = f"${m.group(1)}"
+            data["liability"]["bi_per_accident"] = f"${m.group(2)}"
+            data["liability"]["selected"] = True
+    if linear.get("li_pd"):
+        data["liability"]["pd"] = f"${linear['li_pd']}"
+        data["liability"]["selected"] = True
+
+    if linear.get("umbi_pair"):
+        m = re.search(r"(\d{1,3}(?:,\d{3})?)\s*/\s*(\d{1,3}(?:,\d{3})?)", linear["umbi_pair"])
+        if m:
+            data["uninsured_motorist"]["bi_per_person"] = f"${m.group(1)}"
+            data["uninsured_motorist"]["bi_per_accident"] = f"${m.group(2)}"
+            data["uninsured_motorist"]["selected"] = True
+    if linear.get("umpd_amount"):
+        data["uninsured_motorist"]["pd"] = f"${linear['umpd_amount']}"
+        data["uninsured_motorist"]["selected"] = True
+
+    if data.get("vehicles"):
+        for v in data["vehicles"]:
+            if linear.get("comp_ded"):
+                v["comprehensive"] = {"selected": True, "deductible": re.sub(r"[^\d]", "", linear["comp_ded"])}
+            if linear.get("coll_ded"):
+                v["collision"] = {"selected": True, "deductible": re.sub(r"[^\d]", "", linear["coll_ded"])}
+            if linear.get("rental_limit"):
+                v["rental"] = {"selected": True, "limit": linear["rental_limit"]}
+            if linear.get("roadside"):
+                v["roadside"] = {"selected": True}
 
